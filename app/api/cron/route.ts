@@ -68,7 +68,9 @@ export async function GET() {
     const to = nowSec();
 
     const markets = await fetchCoinalyze('/future-markets');
-    const allSymbols = (markets as any[]).map((m: any) => m.symbol);
+    const allSymbols = (markets as any[])
+  .filter((m: any) => m.is_perpetual === true)
+  .map((m: any) => m.symbol);
 
     // Fetch one metric at a time to stay within rate limits
     const allOiCurrent = await fetchAllChunked('open-interest', allSymbols, 'convert_to_usd=true');
