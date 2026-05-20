@@ -1,101 +1,120 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --bg: #080b0f;
-  --surface: #0d1117;
-  --surface2: #161c26;
-  --surface3: #1c2433;
-  --border: #1e2d40;
-  --border2: #253447;
-  --text: #e2e8f0;
-  --text-muted: #4a6080;
-  --text-dim: #2a3f5a;
-  --accent: #0ea5e9;
-  --accent2: #38bdf8;
-  --green: #22c55e;
-  --red: #ef4444;
-  --orange: #f97316;
-  --yellow: #eab308;
-  --purple: #a78bfa;
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface2: #f8f9fa;
+  --surface3: #eef0f3;
+  --border: #e2e5ea;
+  --border2: #d0d5dd;
+  --text: #0f1724;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+  --accent: #2563eb;
+  --accent-light: #eff6ff;
+  --green: #16a34a;
+  --green-light: #f0fdf4;
+  --red: #dc2626;
+  --red-light: #fef2f2;
+  --orange: #ea580c;
+  --yellow: #d97706;
+  --purple: #7c3aed;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -1px rgba(0,0,0,0.04);
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'Space Mono', monospace;
-  margin: 0;
-  padding: 0;
-  min-height: 100vh;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
-  pointer-events: none;
-  z-index: 1000;
-}
-
-.font-display { font-family: 'Syne', sans-serif; }
+.mono { font-family: 'DM Mono', monospace; }
 
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  position: relative;
-  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
 }
 
-.card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  opacity: 0.3;
+.card-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
 }
 
 .metric-value {
-  font-family: 'Syne', sans-serif;
+  font-size: 28px;
   font-weight: 700;
   letter-spacing: -0.02em;
-}
-
-.label {
-  font-family: 'Space Mono', monospace;
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--text-muted);
+  color: var(--text);
+  line-height: 1.1;
 }
 
 .positive { color: var(--green); }
 .negative { color: var(--red); }
+.neutral { color: var(--text-muted); }
 
-.pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
 }
 
-.fade-in {
-  animation: fadeIn 0.4s ease forwards;
+.badge-green { background: var(--green-light); color: var(--green); }
+.badge-red { background: var(--red-light); color: var(--red); }
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface3) 25%, var(--border) 50%, var(--surface3) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.2);
+  animation: livePulse 2s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.2); }
+  50% { box-shadow: 0 0 0 5px rgba(22, 163, 74, 0.1); }
 }
 
 .recharts-cartesian-grid-horizontal line,
 .recharts-cartesian-grid-vertical line {
   stroke: var(--border) !important;
+  stroke-dasharray: none !important;
+}
+
+.recharts-tooltip-wrapper { outline: none; }
+
+.recharts-text {
+  fill: var(--text-muted) !important;
+  font-family: 'DM Sans', sans-serif !important;
+  font-size: 11px !important;
 }
