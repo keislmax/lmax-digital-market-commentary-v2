@@ -69,7 +69,7 @@ export async function GET() {
 
     const markets = await fetchCoinalyze('/future-markets');
     const allSymbols = (markets as any[])
-  .filter((m: any) => m.is_perpetual === true)
+  .filter((m: any) => m.is_perpetual === true && ['BTC','ETH','SOL','XRP'].includes(m.base_asset))
   .map((m: any) => m.symbol);
 
     // Fetch one metric at a time to stay within rate limits
