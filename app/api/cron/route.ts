@@ -15,13 +15,11 @@ function headers() { return { 'api_key': API_KEY || '' }; }
 function nowSec() { return Math.floor(Date.now() / 1000); }
 function ago(s: number) { return nowSec() - s; }
 
-async function fetchCoinalyze(path: string, retries = 3): Promise<any> {
-  const res = await fetch(`${BASE}${path}`, { headers: headers() });
-  if (res.status === 429 && retries > 0) {
-    const wait = parseInt(res.headers.get('Retry-After') || '5', 10) * 1000;
-    await new Promise(r => setTimeout(r, wait));
-    return fetchCoinalyze(path, retries - 1);
-  }
+async function fetchCoinalyze(path: string): Promise<any> {
+  const res = await fetch(`${BASE}${path}`, { 
+    headers: headers(),
+    signal: AbortSignal.timeout(15000), // 15s timeout per call, no retries
+  });
   if (!res.ok) throw new Error(`${path} failed: ${res.status}`);
   return res.json();
 }
@@ -38,7 +36,6 @@ export async function GET() {
     const from24h = ago(86400);
     const to = nowSec();
 
-    // Only 3 calls — current snapshots only, no history
     const [oiCurrent, fundingCurrent, liqHistory] = await Promise.all([
       fetchCoinalyze(`/open-interest?symbols=${SYMBOLS}&convert_to_usd=true`),
       fetchCoinalyze(`/funding-rate?symbols=${SYMBOLS}`),
