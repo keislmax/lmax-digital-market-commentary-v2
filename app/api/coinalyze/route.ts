@@ -43,7 +43,7 @@ export async function GET() {
     const oiChart = Object.entries(oiByTime).map(([t, v]) => ({ t: Number(t), v })).sort((a, b) => a.t - b.t);
     const oiChange24h = oiChart.length >= 2 ? ((oiChart[oiChart.length - 1].v - oiChart[0].v) / oiChart[0].v) * 100 : 0;
 
-    // Funding rate - 8H rate
+    // Funding rate
     const avgFunding = (fundingCurrent as any[]).reduce((sum: number, s: any) => sum + (s.value || 0), 0) / Math.max((fundingCurrent as any[]).length, 1);
     const fundByTime: Record<number, number[]> = {};
     for (const sym of (fundingHistory as any[])) {
@@ -72,16 +72,18 @@ export async function GET() {
     const totalLiqLong = liqChart.reduce((sum, p) => sum + p.long, 0);
     const totalLiqShort = liqChart.reduce((sum, p) => sum + p.short, 0);
 
-    // Volume + price
+    // Volume — v is base asset (BTC), multiply by close price for USD
     const volByTime: Record<number, { v: number; c: number }> = {};
     for (const sym of (volumeHistory as any[])) {
       for (const point of sym.history || []) {
         if (!volByTime[point.t]) volByTime[point.t] = { v: 0, c: 0 };
-        volByTime[point.t].v += point.v || 0;
+        volByTime[point.t].v += (point.v || 0) * (point.c || 0);
         volByTime[point.t].c = point.c;
       }
     }
-    const volumeChart = Object.entries(volByTime).map(([t, v]) => ({ t: Number(t), volume: v.v, price: v.c })).sort((a, b) => a.t - b.t);
+    const volumeChart = Object.entries(volByTime)
+      .map(([t, v]) => ({ t: Number(t), volume: v.v, price: v.c }))
+      .sort((a, b) => a.t - b.t);
     const totalVolume24h = volumeChart.reduce((sum, p) => sum + p.volume, 0);
     const currentPrice = volumeChart[volumeChart.length - 1]?.price || 0;
 
