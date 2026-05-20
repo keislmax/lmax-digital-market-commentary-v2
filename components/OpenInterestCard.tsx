@@ -12,16 +12,19 @@ export default function OpenInterestCard({ data, loading }: Props) {
 
   return (
     <div className="card" style={{ padding: '20px 20px 16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div className="card-title">Open Interest (24H)</div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>Coinalyze</div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
         <div>
-          <div className="card-title" style={{ marginBottom: 6 }}>Open Interest</div>
           {loading ? <div className="skeleton" style={{ height: 28, width: 140 }} /> :
             <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)' }}>{formatUSD(data?.openInterest?.current || 0)}</div>}
         </div>
         {!loading && change !== undefined && (
           <div style={{ textAlign: 'right' }}>
-            <div className="card-title" style={{ marginBottom: 6 }}>24h Change</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: changeColor }}>{change >= 0 ? '+' : ''}{change.toFixed(2)}%</div>
+            <div className="card-title" style={{ marginBottom: 4 }}>24H Change</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: changeColor }}>{change >= 0 ? '+' : ''}{change.toFixed(2)}%</div>
           </div>
         )}
       </div>
