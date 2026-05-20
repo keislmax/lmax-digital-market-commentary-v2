@@ -25,7 +25,6 @@ export interface CoinalyzeData {
   };
   fundingRate: {
     current: number;
-    annualized: number;
     chart: ChartPoint[];
   };
   liquidations: {
@@ -50,7 +49,6 @@ export interface DeribitData {
   skew: {
     value25d: number | null;
     interpretation: string;
-    strikes: Array<{ strike: number; type: string; iv: number }>;
   };
   updatedAt: number;
   error?: string;
@@ -77,12 +75,21 @@ export interface ETFRow {
   total: number;
 }
 
-export interface ETFData {
-  lastTradingDay: string;
+export interface AssetETFData {
+  asset: string;
   latest: ETFRow | null;
   last30Days: ETFRow[];
-  cumulativeChart: Array<{ date: string; daily: number; cumulative: number }>;
   byETF: Record<string, number>;
+  lastTradingDay: string;
+  error?: string;
+}
+
+export interface ETFData {
+  btc: AssetETFData;
+  eth: AssetETFData;
+  sol: AssetETFData;
+  hype: AssetETFData;
+  lastTradingDay: string;
   note: string;
   updatedAt: number;
   error?: string;
