@@ -25,13 +25,12 @@ async function fetchCoinalyze(path: string) {
 
 export async function GET() {
   try {
-    const [oiCurrent, fundingCurrent, oiHistory, fundingHistory, liqHistory, volumeHistory] = await Promise.all([
+    const [oiCurrent, fundingCurrent, oiHistory, fundingHistory, liqHistory] = await Promise.all([
       fetchCoinalyze(`/open-interest?symbols=${SYMBOLS}&convert_to_usd=true`),
       fetchCoinalyze(`/funding-rate?symbols=${SYMBOLS}`),
       fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=1hour&from=${ago(86400)}&to=${nowSec()}&convert_to_usd=true`),
       fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=1hour&from=${ago(86400)}&to=${nowSec()}`),
       fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=1hour&from=${ago(86400)}&to=${nowSec()}&convert_to_usd=true`),
-      fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=1hour&from=${ago(86400)}&to=${nowSec()}`),
     ]);
 
     const totalOI = (oiCurrent as any[]).reduce((sum: number, s: any) => sum + (s.value || 0), 0);
@@ -60,14 +59,6 @@ export async function GET() {
     const totalLongLiqs = liqChart.reduce((sum, p) => sum + p.l, 0);
     const totalShortLiqs = liqChart.reduce((sum, p) => sum + p.s, 0);
 
-    const volByTime: Record<number, number> = {};
-    for (const sym of (volumeHistory as any[])) {
-      for (const point of sym.history || []) {
-        volByTime[point.t] = (volByTime[point.t] || 0) + (point.v || 0) * (point.c || 0);
-      }
-    }
-    const totalVolume = Object.values(volByTime).reduce((a, b) => a + b, 0);
-
     const fundByTime: Record<number, number[]> = {};
     for (const sym of (fundingHistory as any[])) {
       for (const point of sym.history || []) {
@@ -85,7 +76,7 @@ export async function GET() {
     return NextResponse.json({
       totalOI, oiChange24h, oiChart,
       totalLiqs, totalLongLiqs, totalShortLiqs, liqChart,
-      totalVolume,
+      totalVolume: 0,
       avgFunding, fundChart,
       updatedAt: Date.now(),
     });
