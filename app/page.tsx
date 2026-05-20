@@ -98,7 +98,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <MetricCard label="Open Interest" value={formatUSD(c?.openInterest?.current || 0)} change={c?.openInterest?.change24h} changeSuffix="%" loading={loading} />
           <MetricCard label="24H Volume" value={formatUSD(c?.volume?.total24h || 0)} loading={loading} />
-          <MetricCard label="Total Liquidations" value={formatUSD(c?.liquidations?.total24h || 0)} subValue={c?.liquidations ? `L: ${formatUSD(c.liquidations.longs24h)} / S: ${formatUSD(c.liquidations.shorts24h)}` : undefined}
+          <MetricCard label="Total Liquidations" value={formatUSD(c?.liquidations?.total24h || 0)} subValue={c?.liquidations ? `L: ${formatUSD(c.liquidations.longs24h)} / S: ${formatUSD(c.liquidations.shorts24h)}` : undefined} loading={loading} />
           <MetricCard label="Funding Rate" value={c?.fundingRate?.current !== undefined ? `${(c.fundingRate.current * 100).toFixed(4)}%` : '—'} subValue={c?.fundingRate?.annualized !== undefined ? `${(c.fundingRate.annualized * 100).toFixed(1)}% ann.` : undefined} valueColor={c?.fundingRate?.current !== undefined ? (c.fundingRate.current > 0 ? 'var(--green)' : c.fundingRate.current < 0 ? 'var(--red)' : undefined) : undefined} loading={loading} />
         </div>
 
