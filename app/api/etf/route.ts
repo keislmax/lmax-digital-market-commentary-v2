@@ -12,32 +12,35 @@ function getLastTradingDay(): string {
   return last.toISOString().split('T')[0];
 }
 
+const EMPTY = (asset: string) => ({ asset, error: 'No data', lastTradingDay: getLastTradingDay() });
+
 export async function GET() {
   try {
-    if (!ACTOR_ID || !APIFY_TOKEN) {
-      throw new Error('Missing APIFY_ACTOR_ID or APIFY_API_TOKEN environment variables');
-    }
+    if (!ACTOR_ID || !APIFY_TOKEN) throw new Error('Missing Apify env vars');
 
-    // Read items from the last successful run's default dataset
-    const url = `https://api.apify.com/v2/acts/${ACTOR_ID}/runs/last/dataset/items?token=${APIFY_TOKEN}&status=SUCCEEDED`;
-    const res = await fetch(url, { next: { revalidate: 3600 } });
+    // Run actor synchronously and get key-value store output in one call
+    // waitForFinish=300 means wait up to 5 minutes for completion
+    const runUrl = `https://api.apify.com/v2/acts/${ACTOR_ID}/run-sync?token=${APIFY_TOKEN}&outputRecordKey=OUTPUT&timeout=60`;
 
-    if (!res.ok) throw new Error(`Apify API failed: ${res.status}`);
+    const res = await fetch(runUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+      // Don't cache — always get fresh data
+      cache: 'no-store',
+    });
 
-    const items = await res.json();
+    if (!res.ok) throw new Error(`Apify run-sync failed: ${res.status}`);
 
-    // We pushed one combined object so items[0] has btc/eth/sol/hype
-    const data = Array.isArray(items) && items.length > 0 ? items[0] : null;
+    const data = await res.json();
 
-    if (!data) {
-      throw new Error('No data found in last run dataset');
-    }
+    if (!data || !data.btc) throw new Error('Invalid data structure from actor');
 
     return NextResponse.json({
-      btc: data.btc || { asset: 'BTC', error: 'No data', lastTradingDay: getLastTradingDay() },
-      eth: data.eth || { asset: 'ETH', error: 'No data', lastTradingDay: getLastTradingDay() },
-      sol: data.sol || { asset: 'SOL', error: 'No data', lastTradingDay: getLastTradingDay() },
-      hype: data.hype || { asset: 'HYPE', error: 'No data', lastTradingDay: getLastTradingDay() },
+      btc: data.btc || EMPTY('BTC'),
+      eth: data.eth || EMPTY('ETH'),
+      sol: data.sol || EMPTY('SOL'),
+      hype: data.hype || EMPTY('HYPE'),
       lastTradingDay: getLastTradingDay(),
       note: 'Farside Investors data via Apify. Weekend days excluded.',
       updatedAt: data.updatedAt || Date.now(),
