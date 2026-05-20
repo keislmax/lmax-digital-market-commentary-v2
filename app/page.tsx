@@ -86,7 +86,7 @@ export default function Dashboard() {
       <header style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 50 }}>
         <div style={{ maxWidth: 1440, margin: '0 auto', padding: '0 24px', height: 60, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-            <Image src="/lmax-logo.jpg" alt="LMAX Digital" width={140} height={36} style={{ objectFit: 'contain' }} />
+            <Image src="/LMAXDigital-BlackRed-Logo-Horizontal.jpg" alt="LMAX Digital" width={140} height={36} style={{ objectFit: 'contain' }} />
             <div style={{ width: 1, height: 28, background: 'var(--border)' }} />
             <div>
               <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.01em', lineHeight: 1.2 }}>Market Data Feed</div>
