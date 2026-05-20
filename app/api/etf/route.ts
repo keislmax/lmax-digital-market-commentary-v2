@@ -6,6 +6,15 @@ interface ETFRow {
   total: number;
 }
 
+interface AssetETFData {
+  asset: string;
+  latest: ETFRow | null;
+  last30Days: ETFRow[];
+  byETF: Record<string, number>;
+  lastTradingDay: string;
+  error?: string;
+}
+
 function parseFlowValue(val: string): number | null {
   const cleaned = val.trim().replace(/,/g, '');
   if (!cleaned || cleaned === '-' || cleaned === '—' || cleaned.toLowerCase() === 'n/a') return null;
@@ -13,95 +22,83 @@ function parseFlowValue(val: string): number | null {
   return isNaN(num) ? null : num;
 }
 
-// Farside updates manually — weekend dates have no data.
-// On Monday, the last valid day is Friday.
-// We return the last N trading days of data.
 function getLastTradingDay(): string {
   const now = new Date();
-  const day = now.getUTCDay(); // 0=Sun, 1=Mon...6=Sat
-  const offset = day === 0 ? 2 : day === 1 ? 3 : 1; // Sun→Fri, Mon→Fri, else yesterday
+  const day = now.getUTCDay();
+  const offset = day === 0 ? 2 : day === 1 ? 3 : 1;
   const last = new Date(now);
   last.setUTCDate(now.getUTCDate() - offset);
   return last.toISOString().split('T')[0];
 }
 
-export async function GET() {
+async function scrapeFarside(url: string): Promise<ETFRow[]> {
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml',
+      'Accept-Language': 'en-US,en;q=0.9',
+    },
+    next: { revalidate: 3600 },
+  });
+
+  if (!res.ok) throw new Error(`Farside fetch failed: ${res.status}`);
+  const html = await res.text();
+  const rows: ETFRow[] = [];
+
+  const tableMatch = html.match(/<table[^>]*>[\s\S]*?<\/table>/gi);
+  if (!tableMatch) return rows;
+
+  const mainTable = tableMatch.reduce((a, b) => a.length > b.length ? a : b);
+
+  const headerMatch = mainTable.match(/<thead[\s\S]*?<\/thead>/i);
+  const headers: string[] = [];
+  if (headerMatch) {
+    const ths = headerMatch[0].match(/<th[^>]*>([\s\S]*?)<\/th>/gi) || [];
+    ths.forEach(th => headers.push(th.replace(/<[^>]+>/g, '').trim()));
+  }
+
+  const tbodyMatch = mainTable.match(/<tbody[\s\S]*?<\/tbody>/i);
+  if (!tbodyMatch) return rows;
+
+  const trMatches = tbodyMatch[0].match(/<tr[\s\S]*?<\/tr>/gi) || [];
+  for (const tr of trMatches) {
+    const tds = tr.match(/<td[^>]*>([\s\S]*?)<\/td>/gi) || [];
+    if (tds.length < 3) continue;
+    const cells = tds.map(td => td.replace(/<[^>]+>/g, '').trim());
+    const dateRaw = cells[0];
+    if (!dateRaw) continue;
+
+    let dateObj: Date | null = null;
+    if (/^\d{1,2}\s\w+\s\d{4}$/.test(dateRaw)) {
+      dateObj = new Date(dateRaw);
+    } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateRaw)) {
+      const [d, m, y] = dateRaw.split('/');
+      dateObj = new Date(`${y}-${m}-${d}`);
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
+      dateObj = new Date(dateRaw);
+    }
+
+    if (!dateObj || isNaN(dateObj.getTime())) continue;
+    const dateStr = dateObj.toISOString().split('T')[0];
+
+    const flows: Record<string, number | null> = {};
+    for (let i = 1; i < cells.length - 1 && i < headers.length; i++) {
+      flows[headers[i]] = parseFlowValue(cells[i]);
+    }
+
+    const totalCell = cells[cells.length - 1];
+    const total = parseFlowValue(totalCell) || 0;
+    rows.push({ date: dateStr, flows, total });
+  }
+
+  rows.sort((a, b) => b.date.localeCompare(a.date));
+  return rows;
+}
+
+async function fetchAsset(asset: string, url: string): Promise<AssetETFData> {
   try {
-    const res = await fetch('https://farside.co.uk/bitcoin-etf-flow-all-data/', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; dashboard/1.0)',
-        'Accept': 'text/html',
-      },
-      next: { revalidate: 3600 },
-    });
-
-    if (!res.ok) throw new Error(`Farside fetch failed: ${res.status}`);
-    const html = await res.text();
-
-    // Parse the main data table from Farside's HTML
-    // Table rows look like: <tr><td>date</td><td>IBIT</td>...<td>Total</td></tr>
-    const rows: ETFRow[] = [];
-
-    // Extract table rows with regex — Farside's HTML structure is consistent
-    const tableMatch = html.match(/<table[^>]*>[\s\S]*?<\/table>/gi);
-    if (!tableMatch) throw new Error('Could not find data table in Farside HTML');
-
-    // Find the main ETF flow table (has the most rows)
-    let mainTable = tableMatch.reduce((a, b) => a.length > b.length ? a : b);
-
-    // Extract headers
-    const headerMatch = mainTable.match(/<thead[\s\S]*?<\/thead>/i);
-    const headers: string[] = [];
-    if (headerMatch) {
-      const ths = headerMatch[0].match(/<th[^>]*>([\s\S]*?)<\/th>/gi) || [];
-      ths.forEach(th => {
-        headers.push(th.replace(/<[^>]+>/g, '').trim());
-      });
-    }
-
-    // Extract data rows
-    const tbodyMatch = mainTable.match(/<tbody[\s\S]*?<\/tbody>/i);
-    if (tbodyMatch) {
-      const trMatches = tbodyMatch[0].match(/<tr[\s\S]*?<\/tr>/gi) || [];
-      for (const tr of trMatches) {
-        const tds = tr.match(/<td[^>]*>([\s\S]*?)<\/td>/gi) || [];
-        if (tds.length < 3) continue;
-        const cells = tds.map(td => td.replace(/<[^>]+>/g, '').trim());
-        const dateRaw = cells[0];
-        if (!dateRaw || !/^\d{1,2}\s\w+\s\d{4}$/.test(dateRaw)) continue;
-
-        // Parse date like "16 May 2025"
-        const dateObj = new Date(dateRaw);
-        if (isNaN(dateObj.getTime())) continue;
-        const dateStr = dateObj.toISOString().split('T')[0];
-
-        const flows: Record<string, number | null> = {};
-        for (let i = 1; i < cells.length - 1 && i < headers.length; i++) {
-          flows[headers[i]] = parseFlowValue(cells[i]);
-        }
-
-        const totalCell = cells[cells.length - 1];
-        const total = parseFlowValue(totalCell) || 0;
-
-        rows.push({ date: dateStr, flows, total });
-      }
-    }
-
-    // Sort descending (most recent first)
-    rows.sort((a, b) => b.date.localeCompare(a.date));
-
-    const lastTradingDay = getLastTradingDay();
-    const latest = rows[0] || null;
-    const last30 = rows.slice(0, 30).reverse(); // ascending for charts
-
-    // Cumulative flow
-    const cumulative = last30.reduce((acc, row, i) => {
-      const prev = acc[i - 1]?.cumulative || 0;
-      acc.push({ date: row.date, daily: row.total, cumulative: prev + row.total });
-      return acc;
-    }, [] as Array<{ date: string; daily: number; cumulative: number }>);
-
-    // Total flows by ETF (sum of last 30 days)
+    const rows = await scrapeFarside(url);
+    const last30 = rows.slice(0, 30).reverse();
     const byETF: Record<string, number> = {};
     for (const row of last30) {
       for (const [etf, val] of Object.entries(row.flows)) {
@@ -110,14 +107,38 @@ export async function GET() {
         }
       }
     }
+    return {
+      asset,
+      latest: rows[0] || null,
+      last30Days: last30,
+      byETF,
+      lastTradingDay: getLastTradingDay(),
+    };
+  } catch (err: any) {
+    return {
+      asset,
+      latest: null,
+      last30Days: [],
+      byETF: {},
+      lastTradingDay: getLastTradingDay(),
+      error: err.message,
+    };
+  }
+}
+
+export async function GET() {
+  try {
+    const [btc, eth, sol, hype] = await Promise.all([
+      fetchAsset('BTC', 'https://farside.co.uk/bitcoin-etf-flow-all-data/'),
+      fetchAsset('ETH', 'https://farside.co.uk/eth/'),
+      fetchAsset('SOL', 'https://farside.co.uk/sol/'),
+      fetchAsset('HYPE', 'https://farside.co.uk/hyp/'),
+    ]);
 
     return NextResponse.json({
-      lastTradingDay,
-      latest,
-      last30Days: last30,
-      cumulativeChart: cumulative,
-      byETF,
-      note: 'Farside data — weekend days have no ETF flow data. Monday shows Friday values.',
+      btc, eth, sol, hype,
+      lastTradingDay: getLastTradingDay(),
+      note: 'Farside Investors data. Weekend days excluded — Monday shows Friday values.',
       updatedAt: Date.now(),
     });
   } catch (err: any) {
