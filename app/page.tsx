@@ -88,10 +88,7 @@ export default function Dashboard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
             <Image src="/LMAXDigital-BlackRed-Logo-Horizontal.jpg" alt="LMAX Digital" width={140} height={36} style={{ objectFit: 'contain' }} />
             <div style={{ width: 1, height: 28, background: 'var(--border)' }} />
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.01em', lineHeight: 1.2 }}>Market Data Feed</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>Bitcoin Derivatives & Sentiment</div>
-            </div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.01em' }}>Market Data Feed</div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
