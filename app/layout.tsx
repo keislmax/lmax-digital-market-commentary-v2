@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "BTCDESK — Bitcoin Market Intelligence",
-  description: "Live Bitcoin derivatives, options, ETF flows and market sentiment dashboard",
+  title: "Market Intelligence Dashboard",
+  description: "Live Bitcoin derivatives, options, ETF flows and market sentiment",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
