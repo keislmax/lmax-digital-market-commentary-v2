@@ -33,7 +33,7 @@ export default function OptionsCard({ data, loading }: Props) {
             </div>
           </div>
 
-          <div style={{ height: 80, marginBottom: skew?.strikes?.length ? 12 : 0 }}>
+          <div style={{ height: 80, marginBottom: 0 }}>
             {chart.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chart} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
