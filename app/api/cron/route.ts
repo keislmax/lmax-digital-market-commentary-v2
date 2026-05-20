@@ -26,26 +26,20 @@ async function fetchCoinalyze(path: string, retries = 3): Promise<any> {
   return res.json();
 }
 
+const SYMBOLS = 'BTCUSD_PERP.A,ETHUSD_PERP.A,SOLUSD_PERP.A,XRPUSD_PERP.A,BTCUSDT.6,BTCUSD.6,ETHUSD.6,ETHUSDT.6,BTCUSDC_PERP.A,XRPUSDT_PERP.A,BTCUSDT_PERP.A,ETHBTC_PERP.A,ETHUSDT_PERP.A,XRPUSD.6,SOLUSDT_PERP.A,XRPUSDT.6,SOLUSDT.6,ETHUSDC_PERP.A,SOLUSDC_PERP.A,XRPUSDC_PERP.A,BTCUSD1_PERP.A,SOL_USDT.Y,pf_xbtusd.K,BTCUSD_PERP.3,ETH-PERPETUAL.2,BTCUSDT_PERP.4,XRP-PERP.C,BTCUSDT_PERP.F,pf_ethusd.K,ETH-PERP.C,SOLUSDT.S,ETH-USD.8,2.T,SOL.H,XRPUSDT_PERP.0,BTCUSDT_PERP.3,XRPUSD_PERP.4,BTC.H,BTC-USD.8,ETHUSDT_PERP.F,pf_xrpusd.K,SOLUSD_PERP.3,ETHUSD_PERP.0,ETHUSDT.S,7.T,SOLUSDT_PERP.4,BTCEUR_PERP.0,SOL-PERP.C,PERP_SOL_USDT.W,ETH_USDT.Y,XRPUSDT_PERP.4,XRP.H,SOLPERP.6,PERP_ETH_USDT.W,cETHUSD.7,XRPPERP.6,SOL-USD.8,BTC-PERPETUAL.2,BTC-PERP.V,XRPUSD_PERP.0,BTCUSD_PERP.0,ETH.H,XRP_USDC-PERPETUAL.2,PERP_BTC_USDT.W,XRP-USD.8,BTCUSD_PERP.4,pf_solusd.K,ETHBTC_PERP.F,SOLUSD_PERP.0,XRPUSD_PERP.3,BTC_USDT.Y,SOLUSDT_PERP.F,PERP_XRP_USDT.W,ETH_USDC-PERPETUAL.2,BTC-PERP.C,ETHPERP.6,XRPUSDT_PERP.3,SOLUSDT_PERP.3,XRPUSDT.S,SOLUSDT_PERP.0,ETHUSDT_PERP.4,BTCUSDT_PERP.0,BTC_USDC-PERPETUAL.2,1.T,SOL-PERP.V,BTCETH_PERP.0,XRPBTC_PERP.F,ETH-PERP.V,XRP-PERP.V,ETHUSDT_PERP.0,XRPUSDT_PERP.F,BTCUSD.7,ETHUSD_PERP.3,BTCUSDT.S,BTCPERP.6,0.T,ETHUSDT_PERP.3,SOL_USDC-PERPETUAL.2,XRP_USDT.Y,BTC_USD.Y';
+
 export async function GET() {
   try {
     const from24h = ago(86400);
     const to = nowSec();
 
-    // Step 1: get symbols — filter to BTC/ETH/SOL/XRP perps only (~101 symbols)
-    const markets = await fetchCoinalyze('/future-markets');
-    const symbols = (markets as any[])
-      .filter((m: any) => m.is_perpetual === true && ['BTC','ETH','SOL','XRP'].includes(m.base_asset))
-      .map((m: any) => m.symbol)
-      .join(',');
-
-    // Step 2: fetch all metrics in parallel — single call each, no chunking needed
     const [oiCurrent, liqHistory, oiHistory, volHistory, fundingCurrent, fundingHistory] = await Promise.all([
-      fetchCoinalyze(`/open-interest?symbols=${symbols}&convert_to_usd=true`),
-      fetchCoinalyze(`/liquidation-history?symbols=${symbols}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
-      fetchCoinalyze(`/open-interest-history?symbols=${symbols}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
-      fetchCoinalyze(`/ohlcv-history?symbols=${symbols}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
-      fetchCoinalyze(`/funding-rate?symbols=${symbols}`),
-      fetchCoinalyze(`/funding-rate-history?symbols=${symbols}&interval=1hour&from=${from24h}&to=${to}`),
+      fetchCoinalyze(`/open-interest?symbols=${SYMBOLS}&convert_to_usd=true`),
+      fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
+      fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
+      fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
+      fetchCoinalyze(`/funding-rate?symbols=${SYMBOLS}`),
+      fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}`),
     ]);
 
     // Aggregate OI
