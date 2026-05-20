@@ -9,31 +9,54 @@ export default function OptionsCard({ data, loading }: Props) {
   const dvol = data?.dvol?.current;
   const skew = data?.skew;
   const chart = (data?.dvol?.chart || []).map(p => ({ t: formatTimestamp(p.t), v: p.v }));
+
   const skewColor = skew?.value25d === null || skew?.value25d === undefined ? 'var(--text-muted)'
-    : skew.value25d > 3 ? 'var(--red)' : skew.value25d < -3 ? 'var(--green)' : 'var(--yellow)';
+    : skew.value25d > 3 ? 'var(--red)'
+    : skew.value25d < -3 ? 'var(--green)'
+    : 'var(--yellow)';
+
+  const skewLabel = skew?.value25d === null || skew?.value25d === undefined ? null
+    : skew.value25d > 5 ? 'Bearish — puts bid up'
+    : skew.value25d > 2 ? 'Mildly bearish'
+    : skew.value25d < -5 ? 'Bullish — calls bid up'
+    : skew.value25d < -2 ? 'Mildly bullish'
+    : 'Neutral positioning';
 
   return (
     <div className="card" style={{ padding: '20px' }}>
-      <div className="card-title" style={{ marginBottom: 16 }}>Options · IV & Skew</div>
-      {loading ? <div className="skeleton" style={{ height: 200 }} /> : (
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+        <div className="card-title">Options · Volatility & Skew</div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>Deribit</div>
+      </div>
+
+      {loading ? <div className="skeleton" style={{ height: 180 }} /> : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
             <div style={{ background: 'var(--surface2)', borderRadius: 6, padding: '12px', border: '1px solid var(--border)' }}>
-              <div className="card-title" style={{ marginBottom: 6 }}>DVOL (30d IV)</div>
+              <div className="card-title" style={{ marginBottom: 4 }}>DVOL</div>
               <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--accent)' }}>
                 {dvol !== null && dvol !== undefined ? `${dvol.toFixed(1)}%` : '—'}
               </div>
-            </div>
-            <div style={{ background: 'var(--surface2)', borderRadius: 6, padding: '12px', border: '1px solid var(--border)' }}>
-              <div className="card-title" style={{ marginBottom: 6 }}>25Δ Skew</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: skewColor }}>
-                {skew?.value25d !== null && skew?.value25d !== undefined ? `${skew.value25d >= 0 ? '+' : ''}${skew.value25d.toFixed(1)}` : '—'}
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.4 }}>
+                30-day implied volatility index (Deribit's "VIX for BTC")
               </div>
-              {skew?.interpretation && <div style={{ fontSize: 11, color: skewColor, marginTop: 2, fontWeight: 500 }}>{skew.interpretation}</div>}
+            </div>
+
+            <div style={{ background: 'var(--surface2)', borderRadius: 6, padding: '12px', border: '1px solid var(--border)' }}>
+              <div className="card-title" style={{ marginBottom: 4 }}>25Δ Put/Call Skew</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: skewColor }}>
+                {skew?.value25d !== null && skew?.value25d !== undefined
+                  ? `${skew.value25d >= 0 ? '+' : ''}${skew.value25d.toFixed(1)}`
+                  : '—'}
+              </div>
+              <div style={{ fontSize: 10, color: skewColor, marginTop: 3, lineHeight: 1.4, fontWeight: 500 }}>
+                {skewLabel || 'Puts IV minus Calls IV at 25-delta strikes'}
+              </div>
             </div>
           </div>
 
-          <div style={{ height: 80, marginBottom: 0 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>DVOL — 24H</div>
+          <div style={{ height: 80 }}>
             {chart.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chart} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
@@ -51,20 +74,6 @@ export default function OptionsCard({ data, loading }: Props) {
               </ResponsiveContainer>
             ) : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 13 }}>No chart data</div>}
           </div>
-
-          {skew?.strikes && skew.strikes.length > 0 && (
-            <div>
-              <div className="card-title" style={{ marginBottom: 8 }}>Sample IV by Strike</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {skew.strikes.slice(0, 4).map((s, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>{s.strike.toLocaleString()} {s.type.toUpperCase()}</span>
-                    <span style={{ fontWeight: 600, color: s.type === 'put' ? 'var(--red)' : 'var(--green)' }}>{s.iv.toFixed(1)}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </>
       )}
     </div>
