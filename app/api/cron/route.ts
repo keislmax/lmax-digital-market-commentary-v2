@@ -14,12 +14,13 @@ const API_KEY = process.env.COINALYZE_API_KEY;
 function headers() { return { 'api_key': API_KEY || '' }; }
 function nowSec() { return Math.floor(Date.now() / 1000); }
 function ago(s: number) { return nowSec() - s; }
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
-async function fetchCoinalyze(path: string, retries = 3): Promise<any> {
+async function fetchCoinalyze(path: string, retries = 2): Promise<any> {
   const res = await fetch(`${BASE}${path}`, { headers: headers() });
   if (res.status === 429 && retries > 0) {
     const wait = parseInt(res.headers.get('Retry-After') || '5', 10) * 1000;
-    await new Promise(r => setTimeout(r, wait));
+    await sleep(wait);
     return fetchCoinalyze(path, retries - 1);
   }
   if (!res.ok) throw new Error(`${path} failed: ${res.status}`);
@@ -32,16 +33,26 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
+// Fetch in batches of 10 parallel calls at a time, with pause between batches
 async function fetchAllChunked(endpoint: string, symbols: string[], extraParams = ''): Promise<any[]> {
   const chunks = chunk(symbols, 200);
-  const results = await Promise.all(
-    chunks.map(c =>
-      fetchCoinalyze(`/${endpoint}?symbols=${c.join(',')}&${extraParams}`)
-        .then(d => Array.isArray(d) ? d : [])
-        .catch(() => [])
-    )
-  );
-  return results.flat();
+  const batchSize = 10; // 10 parallel at a time, well under rate limit
+  const allResults: any[] = [];
+
+  for (let i = 0; i < chunks.length; i += batchSize) {
+    const batch = chunks.slice(i, i + batchSize);
+    const results = await Promise.all(
+      batch.map(c =>
+        fetchCoinalyze(`/${endpoint}?symbols=${c.join(',')}&${extraParams}`)
+          .then(d => Array.isArray(d) ? d : [])
+          .catch(() => [])
+      )
+    );
+    allResults.push(...results.flat());
+    if (i + batchSize < chunks.length) await sleep(1500); // pause between batches
+  }
+
+  return allResults;
 }
 
 const FUNDING_SYMBOLS = [
@@ -59,12 +70,11 @@ export async function GET() {
     const markets = await fetchCoinalyze('/future-markets');
     const allSymbols = (markets as any[]).map((m: any) => m.symbol);
 
-    const [allOiCurrent, allLiqHistory, allOiHistory, allVolHistory] = await Promise.all([
-      fetchAllChunked('open-interest', allSymbols, 'convert_to_usd=true'),
-      fetchAllChunked('liquidation-history', allSymbols, `interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
-      fetchAllChunked('open-interest-history', allSymbols, `interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
-      fetchAllChunked('ohlcv-history', allSymbols, `interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
-    ]);
+    // Fetch one metric at a time to stay within rate limits
+    const allOiCurrent = await fetchAllChunked('open-interest', allSymbols, 'convert_to_usd=true');
+    const allLiqHistory = await fetchAllChunked('liquidation-history', allSymbols, `interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+    const allOiHistory = await fetchAllChunked('open-interest-history', allSymbols, `interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+    const allVolHistory = await fetchAllChunked('ohlcv-history', allSymbols, `interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
 
     const [fundingCurrent, fundingHistory] = await Promise.all([
       fetchCoinalyze(`/funding-rate?symbols=${FUNDING_SYMBOLS}`),
@@ -135,8 +145,8 @@ export async function GET() {
     };
 
     await redis.set('coinalyze:data', JSON.stringify(result), { ex: 7200 });
-
     return NextResponse.json({ ok: true, updatedAt: result.updatedAt });
+
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
