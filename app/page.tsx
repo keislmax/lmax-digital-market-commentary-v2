@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
+import Image from 'next/image';
 import { DashboardData } from '@/lib/types';
 import { timeAgo, formatUSD } from '@/lib/utils';
 import PriceHeader from '@/components/PriceHeader';
@@ -19,21 +20,24 @@ function StatBadge({ value, suffix = '%' }: { value?: number; suffix?: string })
   if (value === undefined || value === null) return null;
   const pos = value >= 0;
   return (
-    <span className={`badge ${pos ? 'badge-green' : 'badge-red'}`}>
-      {pos ? <TrendingUp size={10} style={{ marginRight: 3 }} /> : <TrendingDown size={10} style={{ marginRight: 3 }} />}
+    <span className={`badge ${pos ? 'badge-green' : 'badge-red'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+      {pos ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
       {pos ? '+' : ''}{value.toFixed(2)}{suffix}
     </span>
   );
 }
 
-function TopMetric({ label, value, sub, change, valueColor }: { label: string; value: string; sub?: string; change?: number; valueColor?: string }) {
+function TopMetric({ label, value, sub, change, valueColor, source }: { label: string; value: string; sub?: string; change?: number; valueColor?: string; source?: string }) {
   return (
-    <div className="card p-5 flex flex-col gap-2">
-      <div className="card-title">{label}</div>
-      <div className="metric-value" style={{ color: valueColor }}>{value}</div>
-      <div className="flex items-center gap-2 flex-wrap">
+    <div className="card" style={{ padding: '16px 18px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+        <div className="card-title">{label}</div>
+        {source && <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>{source}</div>}
+      </div>
+      <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', color: valueColor || 'var(--text)', lineHeight: 1.1, marginBottom: 6 }}>{value}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minHeight: 20 }}>
         {change !== undefined && <StatBadge value={change} />}
-        {sub && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{sub}</span>}
+        {sub && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{sub}</span>}
       </div>
     </div>
   );
@@ -74,36 +78,38 @@ export default function Dashboard() {
   const fg = data?.feargreed;
   const etf = data?.etf;
 
+  const fundingPct = c?.fundingRate?.current !== undefined ? (c.fundingRate.current * 100).toFixed(4) : null;
+  const fundingColor = c?.fundingRate?.current !== undefined ? (c.fundingRate.current > 0 ? 'var(--green)' : c.fundingRate.current < 0 ? 'var(--red)' : 'var(--text)') : 'var(--text)';
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       <header style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 50 }}>
-        <div style={{ maxWidth: 1400, margin: '0 auto', padding: '0 24px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.01em' }}>
-              BTC Market Intelligence
+        <div style={{ maxWidth: 1440, margin: '0 auto', padding: '0 24px', height: 60, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+            <Image src="/lmax-logo.jpg" alt="LMAX Digital" width={140} height={36} style={{ objectFit: 'contain' }} />
+            <div style={{ width: 1, height: 28, background: 'var(--border)' }} />
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.01em', lineHeight: 1.2 }}>Market Data Feed</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>Bitcoin Derivatives & Sentiment</div>
             </div>
-            <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <div className="live-dot" />
               <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>Live</span>
             </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {lastFetch && (
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                Updated {timeAgo(lastFetch)}
-              </span>
-            )}
+            {lastFetch && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Updated {timeAgo(lastFetch)}</span>}
             <button
               onClick={() => fetchData(true)}
               disabled={refreshing || loading}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
-                padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 500,
+                padding: '7px 16px', borderRadius: 6, fontSize: 13, fontWeight: 500,
                 background: refreshing ? 'var(--surface3)' : 'var(--accent)',
                 color: refreshing ? 'var(--text-muted)' : '#fff',
                 border: 'none', cursor: refreshing ? 'not-allowed' : 'pointer',
-                fontFamily: 'DM Sans, sans-serif',
+                fontFamily: 'DM Sans, sans-serif', transition: 'opacity 0.2s',
               }}
             >
               <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
@@ -113,23 +119,43 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <main style={{ maxWidth: 1400, margin: '0 auto', padding: '24px' }}>
+      <main style={{ maxWidth: 1440, margin: '0 auto', padding: '20px 24px' }}>
         {error && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 8, background: 'var(--red-light)', border: '1px solid #fecaca', marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 8, background: 'var(--red-light)', border: '1px solid #fecaca', marginBottom: 16 }}>
             <AlertCircle size={14} style={{ color: 'var(--red)' }} />
             <span style={{ fontSize: 13, color: 'var(--red)' }}>Data error: {error}</span>
           </div>
         )}
 
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 16 }}>
           <PriceHeader price={c?.price} loading={loading} />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
-          <TopMetric label="Open Interest" value={loading ? '—' : formatUSD(c?.openInterest?.current || 0)} change={c?.openInterest?.change24h} sub="24h change" />
-          <TopMetric label="24H Volume" value={loading ? '—' : formatUSD(c?.volume?.total24h || 0)} />
-          <TopMetric label="Total Liquidations" value={loading ? '—' : formatUSD(c?.liquidations?.total24h || 0)} sub={c?.liquidations ? `L: ${formatUSD(c.liquidations.longs24h)} · S: ${formatUSD(c.liquidations.shorts24h)}` : undefined} />
-          <TopMetric label="Funding Rate" value={loading ? '—' : c?.fundingRate?.current !== undefined ? `${(c.fundingRate.current * 100).toFixed(4)}%` : '—'} sub={c?.fundingRate?.annualized !== undefined ? `${(c.fundingRate.annualized * 100).toFixed(1)}% annualised` : undefined} valueColor={c?.fundingRate?.current !== undefined ? (c.fundingRate.current > 0 ? 'var(--green)' : c.fundingRate.current < 0 ? 'var(--red)' : undefined) : undefined} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+          <TopMetric
+            label="Open Interest (24H)"
+            value={loading ? '—' : formatUSD(c?.openInterest?.current || 0)}
+            change={c?.openInterest?.change24h}
+            source="Coinalyze"
+          />
+          <TopMetric
+            label="Volume (24H)"
+            value={loading ? '—' : formatUSD(c?.volume?.total24h || 0)}
+            source="Coinalyze"
+          />
+          <TopMetric
+            label="Total Liquidations (24H)"
+            value={loading ? '—' : formatUSD(c?.liquidations?.total24h || 0)}
+            sub={c?.liquidations ? `Longs: ${formatUSD(c.liquidations.longs24h)} · Shorts: ${formatUSD(c.liquidations.shorts24h)}` : undefined}
+            source="Coinalyze"
+          />
+          <TopMetric
+            label="Funding Rate (8H)"
+            value={loading ? '—' : fundingPct ? `${fundingPct}%` : '—'}
+            sub="Per 8-hour settlement period"
+            valueColor={fundingColor}
+            source="Coinalyze"
+          />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
@@ -148,8 +174,8 @@ export default function Dashboard() {
           <ETFCard data={etf} loading={loading} />
         </div>
 
-        <div style={{ textAlign: 'center', padding: '16px 0 8px', fontSize: 11, color: 'var(--text-muted)' }}>
-          Data sources: Coinalyze · Deribit · Alternative.me · Farside Investors · Refreshes every 5 minutes
+        <div style={{ textAlign: 'center', padding: '12px 0 4px', fontSize: 11, color: 'var(--text-muted)' }}>
+          Data: Coinalyze · Deribit · Alternative.me · Farside Investors · Auto-refreshes every 5 minutes
         </div>
       </main>
     </div>
