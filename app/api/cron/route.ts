@@ -38,75 +38,40 @@ export async function GET() {
     const from24h = ago(86400);
     const to = nowSec();
 
-    const [oiCurrent, liqHistory, oiHistory, volHistory, fundingCurrent, fundingHistory] = await Promise.all([
+    // Only 3 calls — current snapshots only, no history
+    const [oiCurrent, fundingCurrent, liqHistory] = await Promise.all([
       fetchCoinalyze(`/open-interest?symbols=${SYMBOLS}&convert_to_usd=true`),
-      fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
-      fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
-      fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
       fetchCoinalyze(`/funding-rate?symbols=${SYMBOLS}`),
-      fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}`),
+      fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=1day&from=${from24h}&to=${to}&convert_to_usd=true`),
     ]);
 
-    // Aggregate OI
     const totalOI = (oiCurrent as any[]).reduce((sum: number, s: any) => sum + (s.value || 0), 0);
-    const oiByTime: Record<number, number> = {};
-    for (const sym of (oiHistory as any[])) {
-      for (const point of sym.history || []) {
-        oiByTime[point.t] = (oiByTime[point.t] || 0) + point.c;
-      }
-    }
-    const oiChart = Object.entries(oiByTime)
-      .map(([t, v]) => ({ t: Number(t), v }))
-      .sort((a, b) => a.t - b.t);
-    const oiChange24h = oiChart.length >= 2
-      ? ((oiChart[oiChart.length - 1].v - oiChart[0].v) / oiChart[0].v) * 100
-      : 0;
 
-    // Aggregate liquidations
-    const liqByTime: Record<number, { l: number; s: number }> = {};
-    for (const sym of (liqHistory as any[])) {
-      for (const point of sym.history || []) {
-        if (!liqByTime[point.t]) liqByTime[point.t] = { l: 0, s: 0 };
-        liqByTime[point.t].l += point.l || 0;
-        liqByTime[point.t].s += point.s || 0;
-      }
-    }
-    const liqChart = Object.entries(liqByTime)
-      .map(([t, v]) => ({ t: Number(t), ...v }))
-      .sort((a, b) => a.t - b.t);
-    const totalLiqs = liqChart.reduce((sum, p) => sum + p.l + p.s, 0);
-    const totalLongLiqs = liqChart.reduce((sum, p) => sum + p.l, 0);
-    const totalShortLiqs = liqChart.reduce((sum, p) => sum + p.s, 0);
-
-    // Aggregate volume
-    const volByTime: Record<number, number> = {};
-    for (const sym of (volHistory as any[])) {
-      for (const point of sym.history || []) {
-        volByTime[point.t] = (volByTime[point.t] || 0) + (point.v || 0) * (point.c || 0);
-      }
-    }
-    const totalVolume = Object.values(volByTime).reduce((a, b) => a + b, 0);
-
-    // Funding rate
-    const fundByTime: Record<number, number[]> = {};
-    for (const sym of (fundingHistory as any[])) {
-      for (const point of sym.history || []) {
-        if (!fundByTime[point.t]) fundByTime[point.t] = [];
-        fundByTime[point.t].push(point.o);
-      }
-    }
-    const fundChart = Object.entries(fundByTime)
-      .map(([t, vals]) => ({ t: Number(t), v: vals.reduce((a, b) => a + b, 0) / vals.length }))
-      .sort((a, b) => a.t - b.t);
     const avgFunding = (fundingCurrent as any[]).length
       ? (fundingCurrent as any[]).reduce((s: number, f: any) => s + (f.last_funding_rate || 0), 0) / (fundingCurrent as any[]).length
       : 0;
 
+    const totalLiqs = (liqHistory as any[]).reduce((sum: number, sym: any) => {
+      return sum + (sym.history || []).reduce((s: number, p: any) => s + (p.l || 0) + (p.s || 0), 0);
+    }, 0);
+    const totalLongLiqs = (liqHistory as any[]).reduce((sum: number, sym: any) => {
+      return sum + (sym.history || []).reduce((s: number, p: any) => s + (p.l || 0), 0);
+    }, 0);
+    const totalShortLiqs = (liqHistory as any[]).reduce((sum: number, sym: any) => {
+      return sum + (sym.history || []).reduce((s: number, p: any) => s + (p.s || 0), 0);
+    }, 0);
+
     const result = {
-      totalOI, oiChange24h, oiChart,
-      totalLiqs, totalLongLiqs, totalShortLiqs, liqChart,
-      totalVolume,
-      avgFunding, fundChart,
+      totalOI,
+      oiChange24h: 0,
+      oiChart: [],
+      totalLiqs,
+      totalLongLiqs,
+      totalShortLiqs,
+      liqChart: [],
+      totalVolume: 0,
+      avgFunding,
+      fundChart: [],
       updatedAt: Date.now(),
     };
 
