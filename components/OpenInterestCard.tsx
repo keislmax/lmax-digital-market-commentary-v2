@@ -1,61 +1,48 @@
 'use client';
-
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { CoinalyzeData } from '@/lib/types';
 import { formatUSD, formatTimestamp } from '@/lib/utils';
 
 interface Props { data?: CoinalyzeData; loading: boolean; }
 
 export default function OpenInterestCard({ data, loading }: Props) {
-  const chart = data?.openInterest?.chart || [];
-  const formatted = chart.map(p => ({ ...p, display: formatTimestamp(p.t) }));
+  const chart = (data?.openInterest?.chart || []).map(p => ({ t: formatTimestamp(p.t), v: p.v }));
+  const change = data?.openInterest?.change24h;
+  const changeColor = change === undefined ? 'var(--text-muted)' : change >= 0 ? 'var(--green)' : 'var(--red)';
 
   return (
-    <div className="card p-4">
-      <div className="flex items-center justify-between mb-4">
+    <div className="card" style={{ padding: '20px 20px 16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
         <div>
-          <div className="label mb-1">Open Interest</div>
-          {loading ? (
-            <div className="h-7 w-32 rounded animate-pulse" style={{ background: 'var(--surface3)' }} />
-          ) : (
-            <div className="metric-value text-2xl">{formatUSD(data?.openInterest?.current || 0)}</div>
-          )}
+          <div className="card-title" style={{ marginBottom: 6 }}>Open Interest</div>
+          {loading ? <div className="skeleton" style={{ height: 28, width: 140 }} /> :
+            <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)' }}>{formatUSD(data?.openInterest?.current || 0)}</div>}
         </div>
-        {!loading && data?.openInterest?.change24h !== undefined && (
-          <div className="text-right">
-            <div className="label mb-1">24h Change</div>
-            <div className="metric-value text-lg" style={{ color: data.openInterest.change24h >= 0 ? 'var(--green)' : 'var(--red)' }}>
-              {data.openInterest.change24h >= 0 ? '+' : ''}{data.openInterest.change24h.toFixed(2)}%
-            </div>
+        {!loading && change !== undefined && (
+          <div style={{ textAlign: 'right' }}>
+            <div className="card-title" style={{ marginBottom: 6 }}>24h Change</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: changeColor }}>{change >= 0 ? '+' : ''}{change.toFixed(2)}%</div>
           </div>
         )}
       </div>
-
-      <div style={{ height: 140 }}>
-        {loading ? (
-          <div className="h-full rounded animate-pulse" style={{ background: 'var(--surface3)' }} />
-        ) : formatted.length > 0 ? (
+      <div style={{ height: 160 }}>
+        {loading ? <div className="skeleton" style={{ height: '100%' }} /> : chart.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={formatted} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+            <AreaChart data={chart} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="oiGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#2563eb" stopOpacity={0.12} />
+                  <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <XAxis dataKey="display" tick={{ fill: 'var(--text-muted)', fontSize: 9, fontFamily: 'Space Mono' }} tickLine={false} axisLine={false} interval={5} />
-              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9, fontFamily: 'Space Mono' }} tickLine={false} axisLine={false} tickFormatter={(v) => formatUSD(v)} width={60} />
-              <Tooltip
-                contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 11, fontFamily: 'Space Mono' }}
-                labelStyle={{ color: 'var(--text-muted)' }}
-                formatter={(v: unknown) => [formatUSD(v as number), 'OI']}
-              />
-              <Area type="monotone" dataKey="v" stroke="#0ea5e9" strokeWidth={1.5} fill="url(#oiGrad)" dot={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="t" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} tickLine={false} axisLine={false} interval={5} />
+              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => formatUSD(v)} width={65} />
+              <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, boxShadow: 'var(--shadow)' }} formatter={(v: unknown) => [formatUSD(v as number), 'Open Interest']} />
+              <Area type="monotone" dataKey="v" stroke="#2563eb" strokeWidth={2} fill="url(#oiGrad)" dot={false} />
             </AreaChart>
           </ResponsiveContainer>
-        ) : (
-          <div className="h-full flex items-center justify-center label">No data</div>
-        )}
+        ) : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 13 }}>No data available</div>}
       </div>
     </div>
   );
