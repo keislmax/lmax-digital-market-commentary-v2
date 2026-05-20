@@ -32,21 +32,49 @@ function getLastTradingDay(): string {
 }
 
 async function scrapeFarside(url: string): Promise<ETFRow[]> {
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml',
-      'Accept-Language': 'en-US,en;q=0.9',
-    },
-    next: { revalidate: 3600 },
-  });
+  const userAgents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  ];
 
-  if (!res.ok) throw new Error(`Farside fetch failed: ${res.status}`);
-  const html = await res.text();
+  let html = '';
+  let lastError = '';
+
+  for (const ua of userAgents) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': ua,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-GB,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+          'Referer': 'https://farside.co.uk/',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'same-origin',
+          'Upgrade-Insecure-Requests': '1',
+        },
+        next: { revalidate: 3600 },
+      });
+
+      if (res.ok) {
+        html = await res.text();
+        break;
+      }
+      lastError = `HTTP ${res.status}`;
+    } catch (e: any) {
+      lastError = e.message;
+    }
+  }
+
+  if (!html) throw new Error(`Farside blocked: ${lastError}`);
+
   const rows: ETFRow[] = [];
-
   const tableMatch = html.match(/<table[^>]*>[\s\S]*?<\/table>/gi);
-  if (!tableMatch) return rows;
+  if (!tableMatch) throw new Error('No table found in Farside response');
 
   const mainTable = tableMatch.reduce((a, b) => a.length > b.length ? a : b);
 
@@ -85,9 +113,7 @@ async function scrapeFarside(url: string): Promise<ETFRow[]> {
     for (let i = 1; i < cells.length - 1 && i < headers.length; i++) {
       flows[headers[i]] = parseFlowValue(cells[i]);
     }
-
-    const totalCell = cells[cells.length - 1];
-    const total = parseFlowValue(totalCell) || 0;
+    const total = parseFlowValue(cells[cells.length - 1]) || 0;
     rows.push({ date: dateStr, flows, total });
   }
 
@@ -107,22 +133,9 @@ async function fetchAsset(asset: string, url: string): Promise<AssetETFData> {
         }
       }
     }
-    return {
-      asset,
-      latest: rows[0] || null,
-      last30Days: last30,
-      byETF,
-      lastTradingDay: getLastTradingDay(),
-    };
+    return { asset, latest: rows[0] || null, last30Days: last30, byETF, lastTradingDay: getLastTradingDay() };
   } catch (err: any) {
-    return {
-      asset,
-      latest: null,
-      last30Days: [],
-      byETF: {},
-      lastTradingDay: getLastTradingDay(),
-      error: err.message,
-    };
+    return { asset, latest: null, last30Days: [], byETF: {}, lastTradingDay: getLastTradingDay(), error: err.message };
   }
 }
 
