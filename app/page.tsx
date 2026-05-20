@@ -1,11 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, AlertCircle, WifiOff } from 'lucide-react';
+import { RefreshCw, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
 import { DashboardData } from '@/lib/types';
 import { timeAgo, formatUSD } from '@/lib/utils';
 import PriceHeader from '@/components/PriceHeader';
-import MetricCard from '@/components/MetricCard';
 import OpenInterestCard from '@/components/OpenInterestCard';
 import LiquidationsCard from '@/components/LiquidationsCard';
 import FundingRateCard from '@/components/FundingRateCard';
@@ -15,6 +14,30 @@ import OptionsCard from '@/components/OptionsCard';
 import ETFCard from '@/components/ETFCard';
 
 const REFRESH_INTERVAL = 5 * 60 * 1000;
+
+function StatBadge({ value, suffix = '%' }: { value?: number; suffix?: string }) {
+  if (value === undefined || value === null) return null;
+  const pos = value >= 0;
+  return (
+    <span className={`badge ${pos ? 'badge-green' : 'badge-red'}`}>
+      {pos ? <TrendingUp size={10} style={{ marginRight: 3 }} /> : <TrendingDown size={10} style={{ marginRight: 3 }} />}
+      {pos ? '+' : ''}{value.toFixed(2)}{suffix}
+    </span>
+  );
+}
+
+function TopMetric({ label, value, sub, change, valueColor }: { label: string; value: string; sub?: string; change?: number; valueColor?: string }) {
+  return (
+    <div className="card p-5 flex flex-col gap-2">
+      <div className="card-title">{label}</div>
+      <div className="metric-value" style={{ color: valueColor }}>{value}</div>
+      <div className="flex items-center gap-2 flex-wrap">
+        {change !== undefined && <StatBadge value={change} />}
+        {sub && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{sub}</span>}
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -52,75 +75,82 @@ export default function Dashboard() {
   const etf = data?.etf;
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
-      <header className="sticky top-0 z-50 border-b" style={{ background: 'rgba(8,11,15,0.95)', borderColor: 'var(--border)', backdropFilter: 'blur(12px)' }}>
-        <div className="max-w-screen-2xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div>
-            <div className="font-display text-lg font-bold tracking-tight">
-              BTC<span style={{ color: 'var(--accent)' }}>DESK</span>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+      <header style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 50 }}>
+        <div style={{ maxWidth: 1400, margin: '0 auto', padding: '0 24px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.01em' }}>
+              BTC Market Intelligence
             </div>
-            <div className="label" style={{ marginTop: '-2px' }}>Bitcoin Market Intelligence</div>
+            <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div className="live-dot" />
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>Live</span>
+            </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              {error ? (
-                <WifiOff size={12} style={{ color: 'var(--red)' }} />
-              ) : (
-                <div className="pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green)' }} />
-              )}
-              <span className="label">
-                {error ? 'error' : lastFetch ? `updated ${timeAgo(lastFetch)}` : 'loading...'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {lastFetch && (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Updated {timeAgo(lastFetch)}
               </span>
-            </div>
+            )}
             <button
               onClick={() => fetchData(true)}
               disabled={refreshing || loading}
-              className="flex items-center gap-2 px-3 py-1.5 rounded text-xs transition-all"
-              style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: refreshing ? 'var(--text-muted)' : 'var(--text)', cursor: refreshing ? 'not-allowed' : 'pointer' }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 500,
+                background: refreshing ? 'var(--surface3)' : 'var(--accent)',
+                color: refreshing ? 'var(--text-muted)' : '#fff',
+                border: 'none', cursor: refreshing ? 'not-allowed' : 'pointer',
+                fontFamily: 'DM Sans, sans-serif',
+              }}
             >
-              <RefreshCw size={11} className={refreshing ? 'animate-spin' : ''} />
+              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
               Refresh
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-screen-2xl mx-auto px-4 py-6 space-y-6">
+      <main style={{ maxWidth: 1400, margin: '0 auto', padding: '24px' }}>
         {error && (
-          <div className="flex items-center gap-3 px-4 py-3 rounded" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 8, background: 'var(--red-light)', border: '1px solid #fecaca', marginBottom: 20 }}>
             <AlertCircle size={14} style={{ color: 'var(--red)' }} />
-            <span className="text-xs" style={{ color: 'var(--red)' }}>API error: {error}. Showing last cached data.</span>
+            <span style={{ fontSize: 13, color: 'var(--red)' }}>Data error: {error}</span>
           </div>
         )}
 
-        <PriceHeader price={c?.price} loading={loading} />
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <MetricCard label="Open Interest" value={formatUSD(c?.openInterest?.current || 0)} change={c?.openInterest?.change24h} changeSuffix="%" loading={loading} />
-          <MetricCard label="24H Volume" value={formatUSD(c?.volume?.total24h || 0)} loading={loading} />
-          <MetricCard label="Total Liquidations" value={formatUSD(c?.liquidations?.total24h || 0)} subValue={c?.liquidations ? `L: ${formatUSD(c.liquidations.longs24h)} / S: ${formatUSD(c.liquidations.shorts24h)}` : undefined} loading={loading} />
-          <MetricCard label="Funding Rate" value={c?.fundingRate?.current !== undefined ? `${(c.fundingRate.current * 100).toFixed(4)}%` : '—'} subValue={c?.fundingRate?.annualized !== undefined ? `${(c.fundingRate.annualized * 100).toFixed(1)}% ann.` : undefined} valueColor={c?.fundingRate?.current !== undefined ? (c.fundingRate.current > 0 ? 'var(--green)' : c.fundingRate.current < 0 ? 'var(--red)' : undefined) : undefined} loading={loading} />
+        <div style={{ marginBottom: 20 }}>
+          <PriceHeader price={c?.price} loading={loading} />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+          <TopMetric label="Open Interest" value={loading ? '—' : formatUSD(c?.openInterest?.current || 0)} change={c?.openInterest?.change24h} sub="24h change" />
+          <TopMetric label="24H Volume" value={loading ? '—' : formatUSD(c?.volume?.total24h || 0)} />
+          <TopMetric label="Total Liquidations" value={loading ? '—' : formatUSD(c?.liquidations?.total24h || 0)} sub={c?.liquidations ? `L: ${formatUSD(c.liquidations.longs24h)} · S: ${formatUSD(c.liquidations.shorts24h)}` : undefined} />
+          <TopMetric label="Funding Rate" value={loading ? '—' : c?.fundingRate?.current !== undefined ? `${(c.fundingRate.current * 100).toFixed(4)}%` : '—'} sub={c?.fundingRate?.annualized !== undefined ? `${(c.fundingRate.annualized * 100).toFixed(1)}% annualised` : undefined} valueColor={c?.fundingRate?.current !== undefined ? (c.fundingRate.current > 0 ? 'var(--green)' : c.fundingRate.current < 0 ? 'var(--red)' : undefined) : undefined} />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <OpenInterestCard data={c} loading={loading} />
           <LiquidationsCard data={c} loading={loading} />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <FundingRateCard data={c} loading={loading} />
           <VolumeCard data={c} loading={loading} />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
           <FearGreedCard data={fg} loading={loading} />
           <OptionsCard data={d} loading={loading} />
           <ETFCard data={etf} loading={loading} />
         </div>
 
-        <footer className="pt-4 pb-8 text-center label" style={{ color: 'var(--text-dim)' }}>
-          Data: Coinalyze · Deribit · Alternative.me · Farside Investors — auto-refreshes every 5 minutes
-        </footer>
+        <div style={{ textAlign: 'center', padding: '16px 0 8px', fontSize: 11, color: 'var(--text-muted)' }}>
+          Data sources: Coinalyze · Deribit · Alternative.me · Farside Investors · Refreshes every 5 minutes
+        </div>
       </main>
     </div>
   );
