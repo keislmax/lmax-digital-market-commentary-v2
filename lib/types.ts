@@ -2,58 +2,51 @@ export interface ChartPoint {
   t: number;
   v: number;
 }
-
 export interface LiqPoint {
   t: number;
-  long: number;
-  short: number;
-  total: number;
+  l: number;
+  s: number;
 }
-
-export interface VolumePoint {
-  t: number;
-  volume: number;
-  price: number;
-}
-
 export interface CoinalyzeData {
   price: number;
   openInterest: {
     current: number;
     change24h: number;
-    chart: ChartPoint[];
+    chartsByAsset: Record<string, Record<string, ChartPoint[]>>;
   };
   fundingRate: {
     current: number;
-    chart: ChartPoint[];
+    annualized: number;
+    byAsset: Record<string, number>;
+    chartsByAsset: Record<string, Record<string, ChartPoint[]>>;
   };
   liquidations: {
     total24h: number;
     longs24h: number;
     shorts24h: number;
-    chart: LiqPoint[];
+    chartsByAsset: Record<string, Record<string, LiqPoint[]>>;
   };
   volume: {
     total24h: number;
-    chart: VolumePoint[];
+    chartsByAsset: Record<string, Record<string, ChartPoint[]>>;
   };
   updatedAt: number;
   error?: string;
 }
-
 export interface DeribitData {
   dvol: {
     current: number;
-    chart: ChartPoint[];
+    chartsByAsset: Record<string, Record<string, ChartPoint[]>>;
   };
   skew: {
     value25d: number | null;
     interpretation: string;
+    BTC?: { value25d: number | null; interpretation: string };
+    ETH?: { value25d: number | null; interpretation: string };
   };
   updatedAt: number;
   error?: string;
 }
-
 export interface FearGreedData {
   current: {
     value: number;
@@ -68,13 +61,11 @@ export interface FearGreedData {
   updatedAt: number;
   error?: string;
 }
-
 export interface ETFRow {
   date: string;
   flows: Record<string, number | null>;
   total: number;
 }
-
 export interface AssetETFData {
   asset: string;
   latest: ETFRow | null;
@@ -83,7 +74,6 @@ export interface AssetETFData {
   lastTradingDay: string;
   error?: string;
 }
-
 export interface ETFData {
   btc: AssetETFData;
   eth: AssetETFData;
@@ -94,7 +84,6 @@ export interface ETFData {
   updatedAt: number;
   error?: string;
 }
-
 export interface DashboardData {
   coinalyze: CoinalyzeData;
   deribit: DeribitData;
