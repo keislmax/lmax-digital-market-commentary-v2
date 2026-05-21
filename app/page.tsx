@@ -47,9 +47,9 @@ function Sparkline({ data, color = '#2563eb', height = 80 }: { data: number[], c
   );
 }
 
-function MetricCard({ label, value, sub, change, source, children }: {
+function MetricCard({ label, value, sub, change, source, valueColor, children }: {
   label: string; value: string; sub?: string; change?: number;
-  source?: string; children?: React.ReactNode;
+  source?: string; valueColor?: string; children?: React.ReactNode;
 }) {
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
