@@ -10,6 +10,7 @@ import ETFCard from '@/components/ETFCard';
 
 const REFRESH_INTERVAL = 5 * 60 * 1000;
 const TIMEFRAMES = ['24h', '7d', '30d', '90d', '1y'] as const;
+const SPOT_TIMEFRAMES = ['7d', '30d', '90d', '1y'] as const;
 type TF = typeof TIMEFRAMES[number];
 const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 type Asset = typeof ASSETS[number];
@@ -44,9 +45,10 @@ function Badge({ value }: { value?: number }) {
   );
 }
 
-function Sparkline({ data, color = '#2563eb', height = 80, labels, formatValue }: {
-  data: number[], color?: string, height?: number,
-  labels?: string[], formatValue?: (v: number) => string
+function Sparkline({ data, color = '#2563eb', height = 80, labels, formatValue, onHoverChange }: {
+  data: number[]; color?: string; height?: number;
+  labels?: string[]; formatValue?: (v: number) => string;
+  onHoverChange?: (value: number | null, label: string | null) => void;
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
@@ -79,8 +81,12 @@ function Sparkline({ data, color = '#2563eb', height = 80, labels, formatValue }
           const rect = e.currentTarget.getBoundingClientRect();
           const idx = Math.max(0, Math.min(data.length - 1, Math.round((e.clientX - rect.left) / rect.width * (data.length - 1))));
           setHoverIdx(idx);
+          onHoverChange?.(data[idx], labels?.[idx] || null);
         }}
-        onMouseLeave={() => setHoverIdx(null)}
+        onMouseLeave={() => {
+          setHoverIdx(null);
+          onHoverChange?.(null, null);
+        }}
       >
         <polyline points={polylinePoints} fill="none" stroke={color} strokeWidth="1.5" />
         {hoverPoint && (
@@ -114,7 +120,7 @@ const CARD_TITLE_STYLE: React.CSSProperties = {
   textTransform: 'uppercase', color: '#1a1917',
 };
 
-function AssetTabs({ active, onChange }: { active: ChartAsset, onChange: (a: ChartAsset) => void }) {
+function AssetTabs({ active, onChange }: { active: ChartAsset; onChange: (a: ChartAsset) => void }) {
   return (
     <div style={{ display: 'flex', gap: 3 }}>
       {CHART_ASSETS.map(a => (
@@ -129,14 +135,15 @@ function AssetTabs({ active, onChange }: { active: ChartAsset, onChange: (a: Cha
   );
 }
 
-function ChartCard({ label, source, value, sub, change, chartsByAsset, valueColor, color, formatValue, isFunding }: {
-  label: string; source?: string; value: string; sub?: string; change?: number;
+function ChartCard({ label, source, snapshotValue, sub, change, chartsByAsset, valueColor, color, formatValue, timeframes = TIMEFRAMES }: {
+  label: string; source?: string; snapshotValue: string; sub?: string; change?: number;
   chartsByAsset?: Record<string, Record<string, any[]>>;
   valueColor?: string; color?: string; formatValue?: (v: number) => string;
-  isFunding?: boolean;
+  timeframes?: readonly string[];
 }) {
-  const [tf, setTf] = useState<TF>('24h');
+  const [tf, setTf] = useState(timeframes[0] as string);
   const [asset, setAsset] = useState<ChartAsset>('ALL');
+  const [hovered, setHovered] = useState<{ value: number; label: string } | null>(null);
 
   const assetKey = asset === 'ALL' ? 'total' : asset;
   const chartData = chartsByAsset?.[assetKey]?.[tf] || [];
@@ -144,6 +151,14 @@ function ChartCard({ label, source, value, sub, change, chartsByAsset, valueColo
   const isHourly = tf === '24h';
   const labels = chartData.map((p: any) => isHourly ? fmtTime(p.t) : fmtDate(p.t));
   const chartColor = color || valueColor || '#2563eb';
+
+  const lastChartValue = values.length > 0 ? values[values.length - 1] : null;
+  const displayValue = hovered
+    ? (formatValue ? formatValue(hovered.value) : fmtUSD(hovered.value))
+    : asset !== 'ALL' && lastChartValue !== null
+      ? (formatValue ? formatValue(lastChartValue) : fmtUSD(lastChartValue))
+      : snapshotValue;
+  const displayLabel = hovered?.label || null;
 
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
@@ -153,15 +168,16 @@ function ChartCard({ label, source, value, sub, change, chartsByAsset, valueColo
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
         <div>
-          <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: valueColor || 'var(--text)', lineHeight: 1.1 }}>{value}</div>
+          {displayLabel && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>{displayLabel}</div>}
+          <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: valueColor || 'var(--text)', lineHeight: 1.1 }}>{displayValue}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, minHeight: 18 }}>
-            {change !== undefined && <Badge value={change} />}
-            {sub && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{sub}</span>}
+            {!hovered && asset === 'ALL' && change !== undefined && <Badge value={change} />}
+            {!hovered && asset === 'ALL' && sub && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{sub}</span>}
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
           <div style={{ display: 'flex', gap: 3 }}>
-            {TIMEFRAMES.map(t => (
+            {timeframes.map(t => (
               <button key={t} onClick={() => setTf(t)} style={{
                 padding: '2px 7px', borderRadius: 3, fontSize: 10, fontWeight: 600,
                 background: tf === t ? 'var(--accent)' : 'var(--surface2)',
@@ -173,28 +189,42 @@ function ChartCard({ label, source, value, sub, change, chartsByAsset, valueColo
           <AssetTabs active={asset} onChange={setAsset} />
         </div>
       </div>
-      <Sparkline data={values} color={chartColor} height={80} labels={labels} formatValue={formatValue} />
+      <Sparkline
+        data={values} color={chartColor} height={80} labels={labels}
+        formatValue={formatValue}
+        onHoverChange={(v, l) => v !== null ? setHovered({ value: v, label: l || '' }) : setHovered(null)}
+      />
       <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 6, letterSpacing: '0.02em' }}>{EXCHANGES}</div>
     </div>
   );
 }
 
-function MetricCard({ label, value, sub, change, source, valueColor, children }: {
-  label: string; value: string; sub?: string; change?: number;
-  source?: string; valueColor?: string; children?: React.ReactNode;
-}) {
+function FundingRateKPI({ byAsset, loading }: { byAsset?: Record<string, number>; loading: boolean }) {
+  const [asset, setAsset] = useState<Asset>('BTC');
+  const rate = byAsset?.[asset] || 0;
+  const pct = !loading && rate !== 0 ? (rate * 100).toFixed(4) + '%' : '—';
+  const rateColor = rate > 0 ? 'var(--green)' : rate < 0 ? 'var(--red)' : 'var(--text)';
+
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-        <div style={CARD_TITLE_STYLE}>{label}</div>
-        {source && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{source}</div>}
+        <div style={CARD_TITLE_STYLE}>Funding Rate</div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Coinalyze</div>
       </div>
-      <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: valueColor || 'var(--text)', lineHeight: 1.1, marginBottom: 4 }}>{value}</div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minHeight: 18 }}>
-        {change !== undefined && <Badge value={change} />}
-        {sub && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{sub}</span>}
+      <div style={{ display: 'flex', gap: 3, marginBottom: 8 }}>
+        {ASSETS.map(a => (
+          <button key={a} onClick={() => setAsset(a)} style={{
+            padding: '2px 8px', borderRadius: 3, fontSize: 10, fontWeight: 600,
+            background: asset === a ? 'var(--accent)' : 'var(--surface2)',
+            color: asset === a ? '#fff' : 'var(--text-muted)',
+            border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+          }}>{a}</button>
+        ))}
       </div>
-      {children}
+      <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: rateColor, lineHeight: 1.1, marginBottom: 4 }}>{pct}</div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+        {rate > 0 ? 'Longs paying shorts' : rate < 0 ? 'Shorts paying longs' : 'Avg per 8-hour settlement'}
+      </div>
     </div>
   );
 }
@@ -240,26 +270,51 @@ function SpotPriceCard({ prices }: { prices: any }) {
   );
 }
 
-function GlobalMetricsCard({ globalMarketCap, btcDominance }: { globalMarketCap?: number, btcDominance?: number }) {
-  if (!globalMarketCap) return null;
+function GlobalMetricsCard({ pricesData, derivativesVol }: { pricesData: any; derivativesVol?: number }) {
+  if (!pricesData?.globalMarketCap) return null;
+  const rows = [
+    { label: 'Total Market Cap', value: formatUSD(pricesData.globalMarketCap), source: 'CoinGecko' },
+    { label: '24H Market Volume', value: formatUSD(pricesData.globalVolume24h), source: 'CoinGecko' },
+    { label: 'BTC Dominance', value: pricesData.btcDominance?.toFixed(1) + '%', source: 'CoinGecko' },
+    { label: 'ETH Dominance', value: pricesData.ethDominance?.toFixed(1) + '%', source: 'CoinGecko' },
+    { label: 'Derivatives Vol (BTC/ETH/SOL/XRP)', value: derivativesVol ? formatUSD(derivativesVol) : '—', source: 'Coinalyze' },
+  ];
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
         <div style={CARD_TITLE_STYLE}>Global Market</div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>CoinGecko</div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>CoinGecko · Coinalyze</div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total Market Cap</span>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{formatUSD(globalMarketCap)}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>BTC Dominance</span>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{btcDominance?.toFixed(1)}%</span>
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+        {rows.map(({ label, value, source }) => (
+          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{label}</span>
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>{value}</span>
+              <span style={{ fontSize: 9, color: 'var(--text-muted)', marginLeft: 5 }}>{source}</span>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
+}
+
+function buildSpotVolumeCharts(rawData: any): Record<string, Record<string, any[]>> {
+  if (!rawData) return {};
+  const now = Date.now() / 1000;
+  const result: Record<string, Record<string, any[]>> = {};
+  const assets = ['total', 'BTC', 'ETH', 'SOL', 'XRP'];
+  for (const asset of assets) {
+    const all: any[] = rawData[asset] || [];
+    result[asset] = {
+      '7d':  all.filter(p => p.t > now - 7*86400),
+      '30d': all.filter(p => p.t > now - 30*86400),
+      '90d': all.filter(p => p.t > now - 90*86400),
+      '1y':  all,
+    };
+  }
+  return result;
 }
 
 export default function Dashboard() {
@@ -297,13 +352,7 @@ export default function Dashboard() {
   const etf = data?.etf;
   const pricesData = data?.prices;
   const prices = pricesData?.prices;
-  const globalMarketCap = pricesData?.globalMarketCap;
-  const btcDominance = pricesData?.btcDominance;
-
-  const fundingPct = c?.fundingRate?.current !== undefined && c.fundingRate.current !== 0
-    ? (c.fundingRate.current * 100).toFixed(4) + '%' : '—';
-  const fundingColor = !c?.fundingRate?.current ? 'var(--text)'
-    : c.fundingRate.current > 0 ? 'var(--green)' : 'var(--red)';
+  const spotVolumeCharts = buildSpotVolumeCharts(data?.spotvolume);
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
@@ -341,71 +390,106 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* Row 1: Spot Price + Global Market */}
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
           <SpotPriceCard prices={prices} />
-          <GlobalMetricsCard globalMarketCap={globalMarketCap} btcDominance={btcDominance} />
+          <GlobalMetricsCard pricesData={pricesData} derivativesVol={c?.volume?.total24h} />
         </div>
 
+        {/* Row 2: KPI strip */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 12 }}>
-          <MetricCard
-            label="Open Interest" value={loading ? '—' : formatUSD(c?.openInterest?.current || 0)}
-            change={c?.openInterest?.change24h} source="Coinalyze"
-            sub="BTC/ETH/SOL/XRP · Major exchanges"
-          />
-          <MetricCard
-            label="Volume 24H" value={loading ? '—' : formatUSD(c?.volume?.total24h || 0)}
-            source="Coinalyze" sub="BTC/ETH/SOL/XRP · Major exchanges"
-          />
-          <MetricCard
-            label="Liquidations 24H" value={loading ? '—' : formatUSD(c?.liquidations?.total24h || 0)}
-            sub={c?.liquidations ? `Longs: ${formatUSD(c.liquidations.longs24h)} · Shorts: ${formatUSD(c.liquidations.shorts24h)}` : undefined}
-            source="Coinalyze"
-          />
-          <MetricCard
-            label="Funding Rate" value={loading ? '—' : fundingPct}
-            sub="BTC avg · per 8-hour settlement" source="Coinalyze"
-            valueColor={fundingColor}
-          />
+          <div className="card" style={{ padding: '14px 16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={CARD_TITLE_STYLE}>Open Interest</div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Coinalyze</div>
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)', lineHeight: 1.1, marginBottom: 4 }}>
+              {loading ? '—' : formatUSD(c?.openInterest?.current || 0)}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 18 }}>
+              <Badge value={c?.openInterest?.change24h} />
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>BTC/ETH/SOL/XRP · Major exchanges</span>
+            </div>
+          </div>
+
+          <div className="card" style={{ padding: '14px 16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={CARD_TITLE_STYLE}>Total Market Volume</div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>CoinGecko</div>
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)', lineHeight: 1.1, marginBottom: 4 }}>
+              {loading ? '—' : pricesData?.globalVolume24h ? formatUSD(pricesData.globalVolume24h) : '—'}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>All assets · All exchanges · 24H</div>
+          </div>
+
+          <div className="card" style={{ padding: '14px 16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={CARD_TITLE_STYLE}>Liquidations 24H</div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Coinalyze</div>
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)', lineHeight: 1.1, marginBottom: 4 }}>
+              {loading ? '—' : formatUSD(c?.liquidations?.total24h || 0)}
+            </div>
+            {c?.liquidations && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                Longs: {formatUSD(c.liquidations.longs24h)} · Shorts: {formatUSD(c.liquidations.shorts24h)}
+              </div>
+            )}
+          </div>
+
+          <FundingRateKPI byAsset={c?.fundingRate?.byAsset} loading={loading} />
         </div>
 
+        {/* Row 3: OI + Liquidations charts */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <ChartCard
             label="Open Interest" source="Coinalyze"
-            value={loading ? '—' : formatUSD(c?.openInterest?.current || 0)}
+            snapshotValue={loading ? '—' : formatUSD(c?.openInterest?.current || 0)}
             change={c?.openInterest?.change24h}
             chartsByAsset={c?.openInterest?.chartsByAsset}
-            color="#2563eb"
-            formatValue={fmtUSD}
+            color="#2563eb" formatValue={fmtUSD}
           />
           <ChartCard
             label="Liquidations" source="Coinalyze"
-            value={loading ? '—' : formatUSD(c?.liquidations?.total24h || 0)}
+            snapshotValue={loading ? '—' : formatUSD(c?.liquidations?.total24h || 0)}
             sub={c?.liquidations ? `Longs: ${formatUSD(c.liquidations.longs24h)} · Shorts: ${formatUSD(c.liquidations.shorts24h)}` : undefined}
             chartsByAsset={c?.liquidations?.chartsByAsset}
-            color="#dc2626"
-            formatValue={fmtUSD}
+            color="#dc2626" formatValue={fmtUSD}
           />
         </div>
 
+        {/* Row 4: Spot Volume + Funding Rate charts */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <ChartCard
-            label="Volume" source="Coinalyze"
-            value={loading ? '—' : formatUSD(c?.volume?.total24h || 0)}
-            chartsByAsset={c?.volume?.chartsByAsset}
-            color="#16a34a"
-            formatValue={fmtUSD}
+            label="Spot Volume — BTC/ETH/SOL/XRP" source="CoinGecko"
+            snapshotValue="—"
+            chartsByAsset={spotVolumeCharts}
+            color="#7c3aed" formatValue={fmtUSD}
+            timeframes={SPOT_TIMEFRAMES}
           />
           <ChartCard
             label="Funding Rate" source="Coinalyze"
-            value={loading ? '—' : fundingPct}
-            sub={c?.fundingRate?.current > 0 ? 'Longs paying shorts' : c?.fundingRate?.current < 0 ? 'Shorts paying longs' : 'BTC avg across exchanges'}
+            snapshotValue={!loading && c?.fundingRate?.current !== 0 ? (c?.fundingRate?.current * 100).toFixed(4) + '%' : '—'}
+            sub={c?.fundingRate?.current > 0 ? 'Longs paying shorts' : c?.fundingRate?.current < 0 ? 'Shorts paying longs' : 'Avg per 8-hour settlement'}
             chartsByAsset={c?.fundingRate?.chartsByAsset}
-            valueColor={fundingColor}
-            color={fundingColor === 'var(--text)' ? '#6b6860' : fundingColor}
+            valueColor={!c?.fundingRate?.current ? 'var(--text)' : c?.fundingRate?.current > 0 ? 'var(--green)' : 'var(--red)'}
+            color={!c?.fundingRate?.current ? '#6b6860' : c?.fundingRate?.current > 0 ? 'var(--green)' : '#dc2626'}
             formatValue={v => (v * 100).toFixed(4) + '%'}
           />
         </div>
 
+        {/* Row 5: Derivatives Volume chart */}
+        <div style={{ marginBottom: 12 }}>
+          <ChartCard
+            label="Derivatives Volume — BTC/ETH/SOL/XRP" source="Coinalyze"
+            snapshotValue={loading ? '—' : formatUSD(c?.volume?.total24h || 0)}
+            chartsByAsset={c?.volume?.chartsByAsset}
+            color="#16a34a" formatValue={fmtUSD}
+          />
+        </div>
+
+        {/* Row 6: Fear & Greed, Options, ETF */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
           <FearGreedCard data={fg} loading={loading} />
           <OptionsCard data={d} loading={loading} />
@@ -413,7 +497,7 @@ export default function Dashboard() {
         </div>
 
         <div style={{ textAlign: 'center', padding: '12px 0 4px', fontSize: 11, color: 'var(--text-muted)' }}>
-          Derivatives: Coinalyze ({EXCHANGES}) · Prices & Global: CoinGecko · Options: Deribit · Sentiment: Alternative.me · ETF Flows: Farside Investors
+          Derivatives: Coinalyze ({EXCHANGES}) · Prices, Volume & Global: CoinGecko · Options: Deribit · Sentiment: Alternative.me · ETF Flows: Farside Investors
         </div>
       </main>
     </div>
