@@ -6,6 +6,11 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
 });
 
+function lastValue(chart: any[]): number {
+  if (!chart || chart.length === 0) return 0;
+  return chart[chart.length - 1].v || 0;
+}
+
 export async function GET() {
   try {
     const cached = await redis.get('coinalyze:data');
@@ -17,6 +22,16 @@ export async function GET() {
     const currentFunding = raw.avgFunding ||
       (fundChart24h.length ? fundChart24h[fundChart24h.length - 1].v : 0);
 
+    // Derive per-asset rates from chart last values if snapshot unavailable
+    const rawByAsset = raw.fundingByAsset || {};
+    const fundingByAsset = {
+      ALL: rawByAsset.ALL || currentFunding,
+      BTC: rawByAsset.BTC || lastValue(fundCharts?.BTC?.['24h'] || []),
+      ETH: rawByAsset.ETH || lastValue(fundCharts?.ETH?.['24h'] || []),
+      SOL: rawByAsset.SOL || lastValue(fundCharts?.SOL?.['24h'] || []),
+      XRP: rawByAsset.XRP || lastValue(fundCharts?.XRP?.['24h'] || []),
+    };
+
     return NextResponse.json({
       price: 0,
       openInterest: {
@@ -27,7 +42,7 @@ export async function GET() {
       fundingRate: {
         current: currentFunding,
         annualized: currentFunding * 3 * 365,
-        byAsset: raw.fundingByAsset || { ALL: currentFunding, BTC: 0, ETH: 0, SOL: 0, XRP: 0 },
+        byAsset: fundingByAsset,
         chartsByAsset: raw.fundCharts || {},
       },
       liquidations: {
