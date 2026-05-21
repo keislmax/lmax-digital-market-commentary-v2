@@ -1,0 +1,150 @@
+name: Fetch Market Data
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # every hour
+  workflow_dispatch:       # allows manual trigger
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch and cache market data
+        env:
+          COINALYZE_API_KEY: ${{ secrets.COINALYZE_API_KEY }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+        run: |
+          node << 'EOF'
+          const https = require('https');
+
+          const COINALYZE_KEY = process.env.COINALYZE_API_KEY;
+          const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
+          const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+          const SYMBOLS = [
+            'BTCUSDT_PERP.A','BTCUSD_PERP.0','BTCUSDT_PERP.3','BTC-PERPETUAL.2','BTCUSDT_PERP.4','BTCPERP.6',
+            'ETHUSDT_PERP.A','ETHUSD_PERP.0','ETHUSDT_PERP.3','ETH-PERPETUAL.2','ETHUSDT_PERP.4','ETHPERP.6',
+            'SOLUSDT_PERP.A','SOLUSDT_PERP.3','SOLUSDT_PERP.4','SOLPERP.6',
+            'XRPUSDT_PERP.A','XRPUSDT_PERP.3','XRPUSDT_PERP.4','XRPPERP.6',
+          ].join(',');
+
+          function fetch(url, opts={}) {
+            return new Promise((res, rej) => {
+              const u = new URL(url);
+              const options = {
+                hostname: u.hostname, path: u.pathname + u.search,
+                method: opts.method || 'GET',
+                headers: { 'Content-Type': 'application/json', ...(opts.headers||{}) },
+              };
+              const req = https.request(options, r => {
+                let data = '';
+                r.on('data', c => data += c);
+                r.on('end', () => {
+                  try { res(JSON.parse(data)); } catch { res(null); }
+                });
+              });
+              req.on('error', () => res(null));
+              if (opts.body) req.write(opts.body);
+              req.end();
+            });
+          }
+
+          function nowSec() { return Math.floor(Date.now()/1000); }
+          function ago(s) { return nowSec()-s; }
+          function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+          async function fetchCoinalyze(path) {
+            for (let i = 0; i < 3; i++) {
+              const data = await fetch(`https://api.coinalyze.net/v1${path}`, {
+                headers: { 'api_key': COINALYZE_KEY }
+              });
+              if (data && !data.message) return data;
+              console.log(`Retry ${i+1} for ${path}`);
+              await sleep(10000);
+            }
+            return null;
+          }
+
+          async function writeRedis(key, value, ttl=7200) {
+            const body = JSON.stringify(['SET', key, JSON.stringify(value), 'EX', ttl]);
+            const result = await fetch(`${REDIS_URL}/pipeline`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
+              body
+            });
+            console.log('Redis write result:', JSON.stringify(result));
+          }
+
+          async function main() {
+            const from24h = ago(86400);
+            const to = nowSec();
+
+            console.log('Fetching Coinalyze data...');
+            const [oiCurrent, fundingCurrent, oiHistory, fundingHistory, liqHistory] = await Promise.all([
+              fetchCoinalyze(`/open-interest?symbols=${SYMBOLS}&convert_to_usd=true`),
+              fetchCoinalyze(`/funding-rate?symbols=${SYMBOLS}`),
+              fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
+              fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}`),
+              fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
+            ]);
+
+            console.log('OI count:', oiCurrent?.length);
+            console.log('Liq history count:', liqHistory?.length);
+
+            const totalOI = (oiCurrent||[]).reduce((s,x) => s+(x.value||0), 0);
+
+            const oiByTime = {};
+            for (const sym of (oiHistory||[])) {
+              for (const p of (sym.history||[])) {
+                oiByTime[p.t] = (oiByTime[p.t]||0) + p.c;
+              }
+            }
+            const oiChart = Object.entries(oiByTime).map(([t,v])=>({t:+t,v})).sort((a,b)=>a.t-b.t);
+            const oiChange24h = oiChart.length>=2
+              ? ((oiChart[oiChart.length-1].v - oiChart[0].v) / oiChart[0].v) * 100 : 0;
+
+            const liqByTime = {};
+            for (const sym of (liqHistory||[])) {
+              for (const p of (sym.history||[])) {
+                if (!liqByTime[p.t]) liqByTime[p.t] = {l:0,s:0};
+                liqByTime[p.t].l += p.l||0;
+                liqByTime[p.t].s += p.s||0;
+              }
+            }
+            const liqChart = Object.entries(liqByTime).map(([t,v])=>({t:+t,...v})).sort((a,b)=>a.t-b.t);
+            const totalLiqs = liqChart.reduce((s,p)=>s+p.l+p.s, 0);
+            const totalLongLiqs = liqChart.reduce((s,p)=>s+p.l, 0);
+            const totalShortLiqs = liqChart.reduce((s,p)=>s+p.s, 0);
+
+            const fundByTime = {};
+            for (const sym of (fundingHistory||[])) {
+              for (const p of (sym.history||[])) {
+                if (!fundByTime[p.t]) fundByTime[p.t] = [];
+                fundByTime[p.t].push(p.o);
+              }
+            }
+            const fundChart = Object.entries(fundByTime)
+              .map(([t,vals])=>({t:+t,v:vals.reduce((a,b)=>a+b,0)/vals.length}))
+              .sort((a,b)=>a.t-b.t);
+            const avgFunding = (fundingCurrent||[]).length
+              ? (fundingCurrent||[]).reduce((s,f)=>s+(f.last_funding_rate||0),0)/(fundingCurrent||[]).length : 0;
+
+            const result = {
+              totalOI, oiChange24h, oiChart,
+              totalLiqs, totalLongLiqs, totalShortLiqs, liqChart,
+              totalVolume: 0,
+              avgFunding, fundChart,
+              updatedAt: Date.now(),
+            };
+
+            console.log('totalOI:', result.totalOI);
+            console.log('totalLiqs:', result.totalLiqs);
+            console.log('avgFunding:', result.avgFunding);
+
+            await writeRedis('coinalyze:data', result, 7200);
+            console.log('Done!');
+          }
+
+          main().catch(e => { console.error(e); process.exit(1); });
+          EOF
