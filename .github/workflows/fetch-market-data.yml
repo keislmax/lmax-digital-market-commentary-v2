@@ -74,7 +74,13 @@ jobs:
             'XRPUSDT_PERP.A','XRPUSDT_PERP.3','XRPUSDT_PERP.4','XRPPERP.6',
           ].join(',');
 
-          // Determine which asset a symbol belongs to
+          const ASSET_SYMBOLS = {
+            BTC: ['BTCUSDT_PERP.A','BTCUSD_PERP.0','BTCUSDT_PERP.3','BTC-PERPETUAL.2','BTCUSDT_PERP.4','BTCPERP.6'],
+            ETH: ['ETHUSDT_PERP.A','ETHUSD_PERP.0','ETHUSDT_PERP.3','ETH-PERPETUAL.2','ETHUSDT_PERP.4','ETHPERP.6'],
+            SOL: ['SOLUSDT_PERP.A','SOLUSDT_PERP.3','SOLUSDT_PERP.4','SOLPERP.6'],
+            XRP: ['XRPUSDT_PERP.A','XRPUSDT_PERP.3','XRPUSDT_PERP.4','XRPPERP.6'],
+          };
+
           function getAsset(symbol) {
             if (symbol.startsWith('BTC')) return 'BTC';
             if (symbol.startsWith('ETH')) return 'ETH';
@@ -83,7 +89,6 @@ jobs:
             return null;
           }
 
-          // Aggregate OI history — returns { total: [...], BTC: [...], ETH: [...], SOL: [...], XRP: [...] }
           function aggregateOI(data) {
             const byTime = {total:{}, BTC:{}, ETH:{}, SOL:{}, XRP:{}};
             for (const sym of (data||[])) {
@@ -148,16 +153,14 @@ jobs:
             return { total: toArr(byTime.total), BTC: toArr(byTime.BTC), ETH: toArr(byTime.ETH), SOL: toArr(byTime.SOL), XRP: toArr(byTime.XRP) };
           }
 
-          // Build charts object with timeframes and per-asset breakdown
           function buildCharts(h24, h7d, h30d, h90d, h1y, aggregateFn) {
             const a24  = aggregateFn(h24);
             const a7d  = aggregateFn(h7d);
             const a30d = aggregateFn(h30d);
             const a90d = aggregateFn(h90d);
             const a1y  = aggregateFn(h1y);
-            const assets = ['total','BTC','ETH','SOL','XRP'];
             const result = {};
-            for (const asset of assets) {
+            for (const asset of ['total','BTC','ETH','SOL','XRP']) {
               result[asset] = {
                 '24h': a24[asset]  || [],
                 '7d':  a7d[asset]  || [],
@@ -236,6 +239,14 @@ jobs:
             const avgFunding = (fundingCurrent||[]).length
               ? (fundingCurrent||[]).reduce((s,f)=>s+(f.last_funding_rate||0),0)/(fundingCurrent||[]).length : 0;
 
+            // Per-asset current funding rates
+            const fundingByAsset = { ALL: avgFunding };
+            for (const [asset, syms] of Object.entries(ASSET_SYMBOLS)) {
+              const rates = (fundingCurrent||[]).filter(f => syms.includes(f.symbol));
+              fundingByAsset[asset] = rates.length
+                ? rates.reduce((s,f)=>s+(f.last_funding_rate||0),0)/rates.length : 0;
+            }
+
             const oiCharts   = buildCharts(oiH24,   oiH7d,   oiH30d,   oiH90d,   oiH1y,   aggregateOI);
             const liqCharts  = buildCharts(liqH24,  liqH7d,  liqH30d,  liqH90d,  liqH1y,  aggregateLiq);
             const volCharts  = buildCharts(volH24,  volH7d,  volH30d,  volH90d,  volH1y,  aggregateVol);
@@ -255,9 +266,10 @@ jobs:
             console.log('totalLiqs24h:', totalLiqs24h);
             console.log('totalVol24h:', totalVol24h);
             console.log('avgFunding:', avgFunding);
+            console.log('fundingByAsset:', JSON.stringify(fundingByAsset));
 
             const result = {
-              totalOI, oiChange24h, avgFunding,
+              totalOI, oiChange24h, avgFunding, fundingByAsset,
               totalLiqs24h, totalLongLiqs24h, totalShortLiqs24h,
               totalVol24h,
               oiCharts, liqCharts, volCharts, fundCharts,
