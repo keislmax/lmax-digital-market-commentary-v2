@@ -22,7 +22,7 @@ export default function ETFCard({ data, loading }: Props) {
   })
   .filter(row => row.total > 0);
   const totalLatest = latest
-  ? : Object.values(latest.flows || {}).reduce((sum, v) => (sum as number) + (v !== null && v !== undefined ? (v as number) : 0), 0) as number
+  ? Object.values(latest.flows || {}).reduce((sum, v) => (sum as number) + (v !== null && v !== undefined ? (v as number) : 0), 0) as number
   : 0;
   const latestColor = totalLatest > 0 ? 'var(--green)' : totalLatest < 0 ? 'var(--red)' : 'var(--text-muted)';
   const topETFs = Object.entries(assetData?.byETF || {})
