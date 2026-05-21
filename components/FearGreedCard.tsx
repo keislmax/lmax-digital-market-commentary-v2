@@ -5,7 +5,7 @@ import { fearGreedColor } from '@/lib/utils';
 
 interface Props { data?: FearGreedData; loading: boolean; }
 
-const TIMEFRAMES = ['7d', '30d', '90d', '1y'] as const;
+const TIMEFRAMES = ['7d', '30d'] as const;
 type TF = typeof TIMEFRAMES[number];
 
 const CARD_TITLE: React.CSSProperties = {
@@ -27,7 +27,7 @@ export default function FearGreedCard({ data, loading }: Props) {
 
   const allChart = data?.chart || [];
   const now = Date.now() / 1000;
-  const daysMap: Record<TF, number> = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
+  const daysMap: Record<TF, number> = { '7d': 7, '30d': 30 };
   const chart = allChart.filter(p => p.t > now - daysMap[tf] * 86400);
 
   const pct = value !== undefined ? (value / 100) * 180 : 90;
