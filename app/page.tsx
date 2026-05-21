@@ -16,6 +16,88 @@ import ETFCard from '@/components/ETFCard';
 
 const REFRESH_INTERVAL = 5 * 60 * 1000;
 
+const SYMBOLS = [
+  'BTCUSDT_PERP.A','BTCUSDT_PERP.3','BTCUSDT_PERP.6',
+  'ETHUSDT_PERP.A','ETHUSDT_PERP.3','ETHUSDT_PERP.6',
+  'SOLUSDT_PERP.A','SOLUSDT_PERP.3','SOLUSDT_PERP.6',
+  'XRPUSDT_PERP.A','XRPUSDT_PERP.3','XRPUSDT_PERP.6',
+].join(',');
+
+const API_KEY = process.env.NEXT_PUBLIC_COINALYZE_API_KEY || '';
+
+function nowSec() { return Math.floor(Date.now() / 1000); }
+function ago(s: number) { return nowSec() - s; }
+
+async function fetchCoinalyze(endpoint: string, extra = '') {
+  const res = await fetch(
+    `https://api.coinalyze.net/v1/${endpoint}?symbols=${SYMBOLS}&${extra}&api_key=${API_KEY}`
+  );
+  if (!res.ok) throw new Error(`${endpoint} failed: ${res.status}`);
+  return res.json();
+}
+
+async function loadCoinalyzeData() {
+  const from24h = ago(86400);
+  const to = nowSec();
+
+  const [oiCurrent, fundingCurrent, oiHistory, fundingHistory, liqHistory] = await Promise.all([
+    fetchCoinalyze('open-interest', 'convert_to_usd=true'),
+    fetchCoinalyze('funding-rate'),
+    fetchCoinalyze('open-interest-history', `interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
+    fetchCoinalyze('funding-rate-history', `interval=1hour&from=${from24h}&to=${to}`),
+    fetchCoinalyze('liquidation-history', `interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
+  ]);
+
+  const totalOI = (oiCurrent as any[]).reduce((sum: number, s: any) => sum + (s.value || 0), 0);
+
+  const oiByTime: Record<number, number> = {};
+  for (const sym of (oiHistory as any[])) {
+    for (const point of sym.history || []) {
+      oiByTime[point.t] = (oiByTime[point.t] || 0) + point.c;
+    }
+  }
+  const oiChart = Object.entries(oiByTime).map(([t, v]) => ({ t: Number(t), v })).sort((a, b) => a.t - b.t);
+  const oiChange24h = oiChart.length >= 2
+    ? ((oiChart[oiChart.length - 1].v - oiChart[0].v) / oiChart[0].v) * 100
+    : 0;
+
+  const liqByTime: Record<number, { l: number; s: number }> = {};
+  for (const sym of (liqHistory as any[])) {
+    for (const point of sym.history || []) {
+      if (!liqByTime[point.t]) liqByTime[point.t] = { l: 0, s: 0 };
+      liqByTime[point.t].l += point.l || 0;
+      liqByTime[point.t].s += point.s || 0;
+    }
+  }
+  const liqChart = Object.entries(liqByTime).map(([t, v]) => ({ t: Number(t), ...v })).sort((a, b) => a.t - b.t);
+  const totalLiqs = liqChart.reduce((sum, p) => sum + p.l + p.s, 0);
+  const totalLongLiqs = liqChart.reduce((sum, p) => sum + p.l, 0);
+  const totalShortLiqs = liqChart.reduce((sum, p) => sum + p.s, 0);
+
+  const fundByTime: Record<number, number[]> = {};
+  for (const sym of (fundingHistory as any[])) {
+    for (const point of sym.history || []) {
+      if (!fundByTime[point.t]) fundByTime[point.t] = [];
+      fundByTime[point.t].push(point.o);
+    }
+  }
+  const fundChart = Object.entries(fundByTime)
+    .map(([t, vals]) => ({ t: Number(t), v: vals.reduce((a, b) => a + b, 0) / vals.length }))
+    .sort((a, b) => a.t - b.t);
+  const avgFunding = (fundingCurrent as any[]).length
+    ? (fundingCurrent as any[]).reduce((s: number, f: any) => s + (f.last_funding_rate || 0), 0) / (fundingCurrent as any[]).length
+    : 0;
+
+  return {
+    price: (oiCurrent as any[])[0]?.price || 0,
+    openInterest: { current: totalOI, change24h: oiChange24h, chart: oiChart },
+    fundingRate: { current: avgFunding, annualized: avgFunding * 3 * 365, chart: fundChart },
+    liquidations: { total24h: totalLiqs, longs24h: totalLongLiqs, shorts24h: totalShortLiqs, chart: liqChart },
+    volume: { total24h: 0, chart: [] },
+    updatedAt: Date.now(),
+  };
+}
+
 function StatBadge({ value, suffix = '%' }: { value?: number; suffix?: string }) {
   if (value === undefined || value === null) return null;
   const pos = value >= 0;
@@ -44,7 +126,8 @@ function TopMetric({ label, value, sub, change, valueColor, source }: { label: s
 }
 
 export default function Dashboard() {
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [coinalyze, setCoinalyze] = useState<any>(null);
+  const [otherData, setOtherData] = useState<Partial<DashboardData> | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,10 +137,12 @@ export default function Dashboard() {
     if (isManual) setRefreshing(true);
     setError(null);
     try {
-      const res = await fetch('/api/all', { cache: 'no-store' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      setData(json);
+      const [coinData, otherRes] = await Promise.all([
+        loadCoinalyzeData(),
+        fetch('/api/all', { cache: 'no-store' }).then(r => r.json()),
+      ]);
+      setCoinalyze(coinData);
+      setOtherData(otherRes);
       setLastFetch(Date.now());
     } catch (err: any) {
       setError(err.message);
@@ -73,10 +158,10 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const c = data?.coinalyze;
-  const d = data?.deribit;
-  const fg = data?.feargreed;
-  const etf = data?.etf;
+  const c = coinalyze;
+  const d = otherData?.deribit;
+  const fg = otherData?.feargreed;
+  const etf = otherData?.etf;
 
   const fundingPct = c?.fundingRate?.current !== undefined ? (c.fundingRate.current * 100).toFixed(4) : null;
   const fundingColor = c?.fundingRate?.current !== undefined ? (c.fundingRate.current > 0 ? 'var(--green)' : c.fundingRate.current < 0 ? 'var(--red)' : 'var(--text)') : 'var(--text)';
