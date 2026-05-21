@@ -20,7 +20,7 @@ export default function ETFCard({ data, loading }: Props) {
       .reduce((sum, v) => (sum as number) + (v !== null && v !== undefined ? (v as number) : 0), 0) as number;
     return { date: formatDateStr(row.date), total: computedTotal };
   })
-  .filter(row => row.total > 0);
+  .filter(row => row.total !== 0);
   const totalLatest = latest
   ? Object.values(latest.flows || {}).reduce((sum, v) => (sum as number) + (v !== null && v !== undefined ? (v as number) : 0), 0) as number
   : 0;
