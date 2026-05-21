@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { RefreshCw, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
 import Image from 'next/image';
 import { timeAgo, formatUSD } from '@/lib/utils';
@@ -28,22 +28,85 @@ function Badge({ value }: { value?: number }) {
   );
 }
 
-function Sparkline({ data, color = '#2563eb', height = 80 }: { data: number[], color?: string, height?: number }) {
+function Sparkline({ data, color = '#2563eb', height = 80, labels, formatValue }: {
+  data: number[], color?: string, height?: number,
+  labels?: string[], formatValue?: (v: number) => string
+}) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
   if (!data || data.length < 2) return (
     <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
       No data
     </div>
   );
+
   const min = Math.min(...data), max = Math.max(...data);
   const range = max - min || 1;
-  const w = 400, h = height;
-  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * (h - 8) - 4}`).join(' ');
+  const W = 400, H = height;
+
+  const getPoint = (i: number) => ({
+    x: (i / (data.length - 1)) * W,
+    y: H - ((data[i] - min) / range) * (H - 8) - 4,
+  });
+
+  const polylinePoints = data.map((_, i) => { const p = getPoint(i); return `${p.x},${p.y}`; }).join(' ');
+  const hoverPoint = hoverIdx !== null ? getPoint(hoverIdx) : null;
+  const tooltipLeft = hoverPoint ? (hoverPoint.x / W * 100) : 0;
+
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const xRatio = (e.clientX - rect.left) / rect.width;
+    const idx = Math.max(0, Math.min(data.length - 1, Math.round(xRatio * (data.length - 1))));
+    setHoverIdx(idx);
+  };
+
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height }} preserveAspectRatio="none">
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" />
-    </svg>
+    <div style={{ position: 'relative' }}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        style={{ width: '100%', height, display: 'block', cursor: 'crosshair' }}
+        preserveAspectRatio="none"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
+        <polyline points={polylinePoints} fill="none" stroke={color} strokeWidth="1.5" />
+        {hoverPoint && (
+          <>
+            <line x1={hoverPoint.x} y1={0} x2={hoverPoint.x} y2={H} stroke={color} strokeWidth="0.5" strokeDasharray="3,3" />
+            <circle cx={hoverPoint.x} cy={hoverPoint.y} r="3.5" fill={color} />
+          </>
+        )}
+      </svg>
+      {hoverIdx !== null && data[hoverIdx] !== undefined && (
+        <div style={{
+          position: 'absolute',
+          bottom: '100%',
+          left: `${tooltipLeft}%`,
+          transform: tooltipLeft > 70 ? 'translateX(-100%)' : tooltipLeft < 20 ? 'translateX(0)' : 'translateX(-50%)',
+          background: 'rgba(28,28,26,.92)',
+          color: '#fff',
+          padding: '4px 10px',
+          borderRadius: 4,
+          fontSize: 11,
+          fontFamily: 'var(--mono)',
+          pointerEvents: 'none',
+          whiteSpace: 'nowrap',
+          marginBottom: 6,
+          zIndex: 10,
+          boxShadow: '0 2px 8px rgba(0,0,0,.2)',
+        }}>
+          {labels?.[hoverIdx] && <div style={{ fontSize: 9, opacity: 0.65, marginBottom: 1 }}>{labels[hoverIdx]}</div>}
+          {formatValue ? formatValue(data[hoverIdx]) : data[hoverIdx].toFixed(4)}
+        </div>
+      )}
+    </div>
   );
 }
+
+const CARD_TITLE_STYLE: React.CSSProperties = {
+  fontSize: 10, fontWeight: 700, letterSpacing: '.06em',
+  textTransform: 'uppercase' as const, color: '#1a1917',
+};
 
 function MetricCard({ label, value, sub, change, source, valueColor, children }: {
   label: string; value: string; sub?: string; change?: number;
@@ -52,7 +115,7 @@ function MetricCard({ label, value, sub, change, source, valueColor, children }:
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-        <div className="card-title">{label}</div>
+        <div style={CARD_TITLE_STYLE}>{label}</div>
         {source && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{source}</div>}
       </div>
       <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: valueColor || 'var(--text)', lineHeight: 1.1, marginBottom: 4 }}>{value}</div>
@@ -65,19 +128,21 @@ function MetricCard({ label, value, sub, change, source, valueColor, children }:
   );
 }
 
-function ChartCard({ label, source, value, sub, change, charts, valueColor, color }: {
+function ChartCard({ label, source, value, sub, change, charts, chartLabels, valueColor, color, formatValue }: {
   label: string; source?: string; value: string; sub?: string; change?: number;
-  charts?: Record<string, any[]>; valueColor?: string; color?: string;
+  charts?: Record<string, any[]>; chartLabels?: Record<string, string[]>;
+  valueColor?: string; color?: string; formatValue?: (v: number) => string;
 }) {
   const [tf, setTf] = useState<TF>('24h');
   const chartData = charts?.[tf] || [];
   const values = chartData.map((p: any) => p.v !== undefined ? p.v : (p.l || 0) + (p.s || 0));
+  const labels = chartLabels?.[tf];
   const chartColor = color || valueColor || '#2563eb';
 
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-        <div className="card-title">{label}</div>
+        <div style={CARD_TITLE_STYLE}>{label}</div>
         {source && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{source}</div>}
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
@@ -99,7 +164,7 @@ function ChartCard({ label, source, value, sub, change, charts, valueColor, colo
           ))}
         </div>
       </div>
-      <Sparkline data={values} color={chartColor} height={80} />
+      <Sparkline data={values} color={chartColor} height={80} labels={labels} formatValue={formatValue} />
       <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 6, letterSpacing: '0.02em' }}>{EXCHANGES}</div>
     </div>
   );
@@ -112,7 +177,7 @@ function SpotPriceCard({ prices }: { prices: any }) {
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-        <div className="card-title">Spot Price</div>
+        <div style={CARD_TITLE_STYLE}>Spot Price</div>
         <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>CoinGecko</div>
       </div>
       <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
@@ -152,7 +217,7 @@ function GlobalMetricsCard({ globalMarketCap, btcDominance }: { globalMarketCap?
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-        <div className="card-title">Global Market</div>
+        <div style={CARD_TITLE_STYLE}>Global Market</div>
         <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>CoinGecko</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -167,6 +232,13 @@ function GlobalMetricsCard({ globalMarketCap, btcDominance }: { globalMarketCap?
       </div>
     </div>
   );
+}
+
+function fmtTime(ts: number) {
+  return new Date(ts * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+function fmtDate(ts: number) {
+  return new Date(ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
 export default function Dashboard() {
@@ -207,10 +279,38 @@ export default function Dashboard() {
   const globalMarketCap = pricesData?.globalMarketCap;
   const btcDominance = pricesData?.btcDominance;
 
-  const fundingPct = c?.fundingRate?.current !== undefined
+  const fundingPct = c?.fundingRate?.current !== undefined && c.fundingRate.current !== 0
     ? (c.fundingRate.current * 100).toFixed(4) + '%' : '—';
   const fundingColor = !c?.fundingRate?.current ? 'var(--text)'
     : c.fundingRate.current > 0 ? 'var(--green)' : 'var(--red)';
+
+  // Build timestamp labels for charts
+  const buildLabels = (charts: any, tf: string, isHourly: boolean) => {
+    return (charts?.[tf] || []).map((p: any) => isHourly ? fmtTime(p.t) : fmtDate(p.t));
+  };
+
+  const oiChartLabels: Record<string, string[]> = {
+    '24h': buildLabels(c?.openInterest?.charts, '24h', true),
+    '7d': buildLabels(c?.openInterest?.charts, '7d', false),
+    '30d': buildLabels(c?.openInterest?.charts, '30d', false),
+    '90d': buildLabels(c?.openInterest?.charts, '90d', false),
+    '1y': buildLabels(c?.openInterest?.charts, '1y', false),
+  };
+  const liqChartLabels: Record<string, string[]> = {
+    '24h': buildLabels(c?.liquidations?.charts, '24h', true),
+    '7d': buildLabels(c?.liquidations?.charts, '7d', false),
+    '30d': buildLabels(c?.liquidations?.charts, '30d', false),
+    '90d': buildLabels(c?.liquidations?.charts, '90d', false),
+    '1y': buildLabels(c?.liquidations?.charts, '1y', false),
+  };
+  const volChartLabels: Record<string, string[]> = {
+    '24h': buildLabels(c?.volume?.charts, '24h', true),
+    '7d': buildLabels(c?.volume?.charts, '7d', false),
+    '30d': buildLabels(c?.volume?.charts, '30d', false),
+    '90d': buildLabels(c?.volume?.charts, '90d', false),
+    '1y': buildLabels(c?.volume?.charts, '1y', false),
+  };
+  const fundLabels = (c?.fundingRate?.chart || []).map((p: any) => fmtTime(p.t));
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
@@ -272,7 +372,7 @@ export default function Dashboard() {
           />
           <MetricCard
             label="Funding Rate (8H)" value={loading ? '—' : fundingPct}
-            sub="Per 8-hour settlement" source="Coinalyze"
+            sub="BTC avg · per 8-hour settlement" source="Coinalyze"
             valueColor={fundingColor}
           />
         </div>
@@ -284,14 +384,18 @@ export default function Dashboard() {
             value={loading ? '—' : formatUSD(c?.openInterest?.current || 0)}
             change={c?.openInterest?.change24h}
             charts={c?.openInterest?.charts}
+            chartLabels={oiChartLabels}
             color="#2563eb"
+            formatValue={v => formatUSD(v, 1)}
           />
           <ChartCard
             label="Liquidations" source="Coinalyze"
             value={loading ? '—' : formatUSD(c?.liquidations?.total24h || 0)}
             sub={c?.liquidations ? `Longs: ${formatUSD(c.liquidations.longs24h)} · Shorts: ${formatUSD(c.liquidations.shorts24h)}` : undefined}
             charts={c?.liquidations?.charts}
+            chartLabels={liqChartLabels}
             color="#dc2626"
+            formatValue={v => formatUSD(v, 1)}
           />
         </div>
 
@@ -301,18 +405,26 @@ export default function Dashboard() {
             label="Volume" source="Coinalyze"
             value={loading ? '—' : formatUSD(c?.volume?.total24h || 0)}
             charts={c?.volume?.charts}
+            chartLabels={volChartLabels}
             color="#16a34a"
+            formatValue={v => formatUSD(v, 1)}
           />
           <div className="card" style={{ padding: '14px 16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <div className="card-title">Funding Rate (24H)</div>
+              <div style={CARD_TITLE_STYLE}>Funding Rate (24H)</div>
               <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Coinalyze</div>
             </div>
             <div style={{ fontSize: 24, fontWeight: 700, color: fundingColor, marginBottom: 4 }}>{fundingPct}</div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
-              {c?.fundingRate?.current > 0 ? 'Longs paying shorts' : c?.fundingRate?.current < 0 ? 'Shorts paying longs' : 'Per 8-hour settlement'}
+              {c?.fundingRate?.current > 0 ? 'Longs paying shorts' : c?.fundingRate?.current < 0 ? 'Shorts paying longs' : 'BTC avg across exchanges'}
             </div>
-            <Sparkline data={(c?.fundingRate?.chart || []).map((p: any) => p.v)} color={fundingColor || '#2563eb'} height={80} />
+            <Sparkline
+              data={(c?.fundingRate?.chart || []).map((p: any) => p.v)}
+              color={fundingColor || '#2563eb'}
+              height={80}
+              labels={fundLabels}
+              formatValue={v => (v * 100).toFixed(4) + '%'}
+            />
             <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 6 }}>{EXCHANGES}</div>
           </div>
         </div>
