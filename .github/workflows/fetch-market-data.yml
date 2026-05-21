@@ -74,148 +74,159 @@ jobs:
             'XRPUSDT_PERP.A','XRPUSDT_PERP.3','XRPUSDT_PERP.4','XRPPERP.6',
           ].join(',');
 
+          function aggregateOI(data) {
+            const byTime = {};
+            for (const sym of (data||[])) {
+              for (const p of (sym.history||[])) { byTime[p.t] = (byTime[p.t]||0) + p.c; }
+            }
+            return Object.entries(byTime).map(([t,v])=>({t:+t,v})).sort((a,b)=>a.t-b.t);
+          }
+          function aggregateLiq(data) {
+            const byTime = {};
+            for (const sym of (data||[])) {
+              for (const p of (sym.history||[])) {
+                if (!byTime[p.t]) byTime[p.t] = {l:0,s:0};
+                byTime[p.t].l += p.l||0;
+                byTime[p.t].s += p.s||0;
+              }
+            }
+            return Object.entries(byTime).map(([t,v])=>({t:+t,...v})).sort((a,b)=>a.t-b.t);
+          }
+          function aggregateVol(data) {
+            const byTime = {};
+            for (const sym of (data||[])) {
+              for (const p of (sym.history||[])) {
+                byTime[p.t] = (byTime[p.t]||0) + (p.v||0)*(p.c||0);
+              }
+            }
+            return Object.entries(byTime).map(([t,v])=>({t:+t,v})).sort((a,b)=>a.t-b.t);
+          }
+          function aggregateFund(data) {
+            const byTime = {};
+            for (const sym of (data||[])) {
+              for (const p of (sym.history||[])) {
+                if (!byTime[p.t]) byTime[p.t] = [];
+                byTime[p.t].push(p.o);
+              }
+            }
+            return Object.entries(byTime)
+              .map(([t,vals])=>({t:+t,v:vals.reduce((a,b)=>a+b,0)/vals.length}))
+              .sort((a,b)=>a.t-b.t);
+          }
+
           async function main() {
             const from24h = ago(86400);
-            const from7d = ago(7*86400);
+            const from7d  = ago(7*86400);
             const from30d = ago(30*86400);
             const from90d = ago(90*86400);
-            const from1y = ago(365*86400);
+            const from1y  = ago(365*86400);
             const to = nowSec();
 
-            console.log('Fetching 24H data...');
-            const [oiCurrent, fundingCurrent, oiH24, fundH24, liqH24, volH24] = await Promise.all([
-              fetchCoinalyze(`/open-interest?symbols=${SYMBOLS}&convert_to_usd=true`),
-              fetchCoinalyze(`/funding-rate?symbols=${SYMBOLS}`),
-              fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
-              fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}`),
-              fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
-              fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}`),
-            ]);
+            // ── 24H (hourly) ──────────────────────────────────────────────
+            console.log('=== Fetching 24H data ===');
+            const oiCurrent = await fetchCoinalyze(`/open-interest?symbols=${SYMBOLS}&convert_to_usd=true`);
+            await sleep(2000);
+            const fundingCurrent = await fetchCoinalyze(`/funding-rate?symbols=${SYMBOLS}`);
+            await sleep(2000);
+            const oiH24 = await fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+            await sleep(2000);
+            const fundH24 = await fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}`);
+            await sleep(2000);
+            const liqH24 = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+            await sleep(2000);
+            const volH24 = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}`);
             await sleep(3000);
 
-            console.log('Fetching historical data (daily)...');
-            const [oiH7d, liqH7d, volH7d] = await Promise.all([
-              fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`),
-              fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`),
-              fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}`),
-            ]);
+            // ── 7D (daily) ────────────────────────────────────────────────
+            console.log('=== Fetching 7D data ===');
+            const oiH7d = await fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
+            await sleep(2000);
+            const liqH7d = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
+            await sleep(2000);
+            const volH7d = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}`);
             await sleep(3000);
 
-            const [oiH30d, liqH30d, volH30d] = await Promise.all([
-              fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`),
-              fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`),
-              fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}`),
-            ]);
+            // ── 30D (daily) ───────────────────────────────────────────────
+            console.log('=== Fetching 30D data ===');
+            const oiH30d = await fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
+            await sleep(2000);
+            const liqH30d = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
+            await sleep(2000);
+            const volH30d = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}`);
             await sleep(3000);
 
-            const [oiH90d, liqH90d, volH90d] = await Promise.all([
-              fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`),
-              fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`),
-              fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}`),
-            ]);
+            // ── 90D (daily) ───────────────────────────────────────────────
+            console.log('=== Fetching 90D data ===');
+            const oiH90d = await fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
+            await sleep(2000);
+            const liqH90d = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
+            await sleep(2000);
+            const volH90d = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}`);
             await sleep(3000);
 
-            const [oiH1y, liqH1y, volH1y] = await Promise.all([
-              fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`),
-              fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`),
-              fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}`),
-            ]);
+            // ── 1Y (daily) ────────────────────────────────────────────────
+            console.log('=== Fetching 1Y data ===');
+            const oiH1y = await fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
+            await sleep(2000);
+            const liqH1y = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
+            await sleep(2000);
+            const volH1y = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}`);
+            await sleep(2000);
 
-            // Aggregation helpers
-            function aggregateOI(data) {
-              const byTime = {};
-              for (const sym of (data||[])) {
-                for (const p of (sym.history||[])) { byTime[p.t] = (byTime[p.t]||0) + p.c; }
-              }
-              return Object.entries(byTime).map(([t,v])=>({t:+t,v})).sort((a,b)=>a.t-b.t);
-            }
-            function aggregateLiq(data) {
-              const byTime = {};
-              for (const sym of (data||[])) {
-                for (const p of (sym.history||[])) {
-                  if (!byTime[p.t]) byTime[p.t] = {l:0,s:0};
-                  byTime[p.t].l += p.l||0;
-                  byTime[p.t].s += p.s||0;
-                }
-              }
-              return Object.entries(byTime).map(([t,v])=>({t:+t,...v})).sort((a,b)=>a.t-b.t);
-            }
-            function aggregateVol(data) {
-              const byTime = {};
-              for (const sym of (data||[])) {
-                for (const p of (sym.history||[])) {
-                  byTime[p.t] = (byTime[p.t]||0) + (p.v||0)*(p.c||0);
-                }
-              }
-              return Object.entries(byTime).map(([t,v])=>({t:+t,v})).sort((a,b)=>a.t-b.t);
-            }
-            function aggregateFund(data) {
-              const byTime = {};
-              for (const sym of (data||[])) {
-                for (const p of (sym.history||[])) {
-                  if (!byTime[p.t]) byTime[p.t] = [];
-                  byTime[p.t].push(p.o);
-                }
-              }
-              return Object.entries(byTime)
-                .map(([t,vals])=>({t:+t,v:vals.reduce((a,b)=>a+b,0)/vals.length}))
-                .sort((a,b)=>a.t-b.t);
-            }
-
+            // ── Aggregate ─────────────────────────────────────────────────
+            console.log('=== Aggregating ===');
             const totalOI = (oiCurrent||[]).reduce((s,x)=>s+(x.value||0),0);
             const avgFunding = (fundingCurrent||[]).length
               ? (fundingCurrent||[]).reduce((s,f)=>s+(f.last_funding_rate||0),0)/(fundingCurrent||[]).length : 0;
 
-            const oiChart24h = aggregateOI(oiH24);
+            const oiChart24h  = aggregateOI(oiH24);
             const liqChart24h = aggregateLiq(liqH24);
             const volChart24h = aggregateVol(volH24);
             const fundChart24h = aggregateFund(fundH24);
 
-            const totalLiqs24h = liqChart24h.reduce((s,p)=>s+p.l+p.s,0);
-            const totalVol24h = volChart24h.reduce((s,p)=>s+p.v,0);
+            const totalLiqs24h      = liqChart24h.reduce((s,p)=>s+p.l+p.s,0);
+            const totalLongLiqs24h  = liqChart24h.reduce((s,p)=>s+p.l,0);
+            const totalShortLiqs24h = liqChart24h.reduce((s,p)=>s+p.s,0);
+            const totalVol24h       = volChart24h.reduce((s,p)=>s+p.v,0);
             const oiChange24h = oiChart24h.length>=2
               ? ((oiChart24h[oiChart24h.length-1].v - oiChart24h[0].v)/oiChart24h[0].v)*100 : 0;
 
+            console.log('totalOI:', totalOI);
+            console.log('totalLiqs24h:', totalLiqs24h);
+            console.log('totalVol24h:', totalVol24h);
+            console.log('avgFunding:', avgFunding);
+
             const result = {
-              // Snapshots
               totalOI, oiChange24h, avgFunding,
-              totalLiqs24h,
-              totalLongLiqs24h: liqChart24h.reduce((s,p)=>s+p.l,0),
-              totalShortLiqs24h: liqChart24h.reduce((s,p)=>s+p.s,0),
+              totalLiqs24h, totalLongLiqs24h, totalShortLiqs24h,
               totalVol24h,
-              // Charts by timeframe
               oiCharts: {
                 '24h': oiChart24h,
-                '7d': aggregateOI(oiH7d),
+                '7d':  aggregateOI(oiH7d),
                 '30d': aggregateOI(oiH30d),
                 '90d': aggregateOI(oiH90d),
-                '1y': aggregateOI(oiH1y),
+                '1y':  aggregateOI(oiH1y),
               },
               liqCharts: {
                 '24h': liqChart24h,
-                '7d': aggregateLiq(liqH7d),
+                '7d':  aggregateLiq(liqH7d),
                 '30d': aggregateLiq(liqH30d),
                 '90d': aggregateLiq(liqH90d),
-                '1y': aggregateLiq(liqH1y),
+                '1y':  aggregateLiq(liqH1y),
               },
               volCharts: {
                 '24h': volChart24h,
-                '7d': aggregateVol(volH7d),
+                '7d':  aggregateVol(volH7d),
                 '30d': aggregateVol(volH30d),
                 '90d': aggregateVol(volH90d),
-                '1y': aggregateVol(volH1y),
+                '1y':  aggregateVol(volH1y),
               },
               fundChart: fundChart24h,
               updatedAt: Date.now(),
             };
 
-            console.log('totalOI:', result.totalOI);
-            console.log('totalLiqs24h:', result.totalLiqs24h);
-            console.log('totalVol24h:', result.totalVol24h);
-            console.log('avgFunding:', result.avgFunding);
-
             await writeRedis('coinalyze:data', result, 86400);
-            console.log('Done!');
+            console.log('=== Done! ===');
           }
 
           main().catch(e => { console.error('Fatal:', e); process.exit(1); });
