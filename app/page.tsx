@@ -16,11 +16,6 @@ type Asset = typeof ASSETS[number];
 
 const EXCHANGES = 'Binance · Bybit · OKX · Deribit · BitMEX · Kraken';
 
-function fmtPct(n?: number, dp = 2) {
-  if (n === null || n === undefined || isNaN(n)) return '—';
-  return (n >= 0 ? '+' : '') + n.toFixed(dp) + '%';
-}
-
 function Badge({ value }: { value?: number }) {
   if (value === undefined || value === null) return null;
   const pos = value >= 0;
@@ -70,10 +65,9 @@ function MetricCard({ label, value, sub, change, source, valueColor, children }:
   );
 }
 
-function ChartCard({ label, source, value, sub, change, charts, valueColor, color, formatY }: {
+function ChartCard({ label, source, value, sub, change, charts, valueColor, color }: {
   label: string; source?: string; value: string; sub?: string; change?: number;
   charts?: Record<string, any[]>; valueColor?: string; color?: string;
-  formatY?: (v: number) => string;
 }) {
   const [tf, setTf] = useState<TF>('24h');
   const chartData = charts?.[tf] || [];
@@ -153,8 +147,8 @@ function SpotPriceCard({ prices }: { prices: any }) {
   );
 }
 
-function GlobalMetricsCard({ prices }: { prices: any }) {
-  if (!prices) return null;
+function GlobalMetricsCard({ globalMarketCap, btcDominance }: { globalMarketCap?: number, btcDominance?: number }) {
+  if (!globalMarketCap) return null;
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
@@ -164,11 +158,11 @@ function GlobalMetricsCard({ prices }: { prices: any }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total Market Cap</span>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{formatUSD(prices.globalMarketCap)}</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{formatUSD(globalMarketCap)}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>BTC Dominance</span>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{prices.btcDominance?.toFixed(1)}%</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{btcDominance?.toFixed(1)}%</span>
         </div>
       </div>
     </div>
@@ -208,7 +202,10 @@ export default function Dashboard() {
   const d = data?.deribit;
   const fg = data?.feargreed;
   const etf = data?.etf;
-  const prices = data?.prices;
+  const pricesData = data?.prices;
+  const prices = pricesData?.prices;
+  const globalMarketCap = pricesData?.globalMarketCap;
+  const btcDominance = pricesData?.btcDominance;
 
   const fundingPct = c?.fundingRate?.current !== undefined
     ? (c.fundingRate.current * 100).toFixed(4) + '%' : '—';
@@ -254,7 +251,7 @@ export default function Dashboard() {
         {/* Row 1: Spot Price + Global Market */}
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
           <SpotPriceCard prices={prices} />
-          <GlobalMetricsCard prices={prices} />
+          <GlobalMetricsCard globalMarketCap={globalMarketCap} btcDominance={btcDominance} />
         </div>
 
         {/* Row 2: KPI strip */}
