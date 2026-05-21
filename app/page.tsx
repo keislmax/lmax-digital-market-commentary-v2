@@ -16,25 +16,6 @@ import ETFCard from '@/components/ETFCard';
 
 const REFRESH_INTERVAL = 5 * 60 * 1000;
 
-function nowSec() { return Math.floor(Date.now() / 1000); }
-function ago(s: number) { return nowSec() - s; }
-
-async function fetchCoinalyze(endpoint: string, extra = '') {
-  const res = await fetch(
-    `/api/coinalyze?endpoint=${endpoint}&symbols=BTCUSDT&extra=${encodeURIComponent(extra)}`
-  );
-  if (!res.ok) throw new Error(`${endpoint} failed: ${res.status}`);
-  return res.json();
-}
-
-async function loadCoinalyzeData() {
-  const res = await fetch('/api/coinalyze');
-  if (!res.ok) throw new Error(`coinalyze failed: ${res.status}`);
-  const data = await res.json();
-  if (data.error) throw new Error(data.error);
-  return data;
-}
-
 function StatBadge({ value, suffix = '%' }: { value?: number; suffix?: string }) {
   if (value === undefined || value === null) return null;
   const pos = value >= 0;
@@ -63,8 +44,7 @@ function TopMetric({ label, value, sub, change, valueColor, source }: { label: s
 }
 
 export default function Dashboard() {
-  const [coinalyze, setCoinalyze] = useState<any>(null);
-  const [otherData, setOtherData] = useState<Partial<DashboardData> | null>(null);
+  const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,21 +54,10 @@ export default function Dashboard() {
     if (isManual) setRefreshing(true);
     setError(null);
     try {
-      const [coinResult, otherResult] = await Promise.allSettled([
-        loadCoinalyzeData(),
-        fetch('/api/all', { cache: 'no-store' }).then(r => r.json()),
-      ]);
-
-      if (coinResult.status === 'fulfilled') {
-        setCoinalyze(coinResult.value);
-      } else {
-        setError(coinResult.reason?.message || 'Coinalyze data unavailable');
-      }
-
-      if (otherResult.status === 'fulfilled') {
-        setOtherData(otherResult.value);
-      }
-
+      const res = await fetch('/api/all', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      setData(json);
       setLastFetch(Date.now());
     } catch (err: any) {
       setError(err.message);
@@ -104,10 +73,10 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const c = coinalyze;
-  const d = otherData?.deribit;
-  const fg = otherData?.feargreed;
-  const etf = otherData?.etf;
+  const c = data?.coinalyze;
+  const d = data?.deribit;
+  const fg = data?.feargreed;
+  const etf = data?.etf;
 
   const fundingPct = c?.fundingRate?.current !== undefined ? (c.fundingRate.current * 100).toFixed(4) : null;
   const fundingColor = c?.fundingRate?.current !== undefined ? (c.fundingRate.current > 0 ? 'var(--green)' : c.fundingRate.current < 0 ? 'var(--red)' : 'var(--text)') : 'var(--text)';
@@ -121,7 +90,6 @@ export default function Dashboard() {
             <div style={{ width: 1, height: 28, background: 'var(--border)' }} />
             <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.01em' }}>Market Data Feed</div>
           </div>
-
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <div className="live-dot" />
@@ -151,7 +119,7 @@ export default function Dashboard() {
         {error && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 8, background: 'var(--red-light)', border: '1px solid #fecaca', marginBottom: 16 }}>
             <AlertCircle size={14} style={{ color: 'var(--red)' }} />
-            <span style={{ fontSize: 13, color: 'var(--red)' }}>Derivatives data unavailable: {error}</span>
+            <span style={{ fontSize: 13, color: 'var(--red)' }}>Data error: {error}</span>
           </div>
         )}
 
@@ -162,27 +130,27 @@ export default function Dashboard() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
           <TopMetric
             label="Open Interest (24H)"
-            value={loading ? '—' : c ? formatUSD(c.openInterest?.current || 0) : '—'}
+            value={loading ? '—' : formatUSD(c?.openInterest?.current || 0)}
             change={c?.openInterest?.change24h}
-            source="Multi-exchange"
+            source="Coinalyze"
           />
           <TopMetric
             label="Volume (24H)"
-            value={loading ? '—' : c ? formatUSD(c.volume?.total24h || 0) : '—'}
-            source="Multi-exchange"
+            value={loading ? '—' : formatUSD(c?.volume?.total24h || 0)}
+            source="Coinalyze"
           />
           <TopMetric
             label="Total Liquidations (24H)"
-            value={loading ? '—' : c ? formatUSD(c.liquidations?.total24h || 0) : '—'}
-            sub={c?.liquidations?.note}
-            source="Hyperliquid"
+            value={loading ? '—' : formatUSD(c?.liquidations?.total24h || 0)}
+            sub={c?.liquidations ? `Longs: ${formatUSD(c.liquidations.longs24h)} · Shorts: ${formatUSD(c.liquidations.shorts24h)}` : undefined}
+            source="Coinalyze"
           />
           <TopMetric
             label="Funding Rate (8H)"
             value={loading ? '—' : fundingPct ? `${fundingPct}%` : '—'}
-            sub="BTC avg across exchanges"
+            sub="Per 8-hour settlement period"
             valueColor={fundingColor}
-            source="Multi-exchange"
+            source="Coinalyze"
           />
         </div>
 
@@ -203,14 +171,8 @@ export default function Dashboard() {
         </div>
 
         <div style={{ textAlign: 'center', padding: '12px 0 4px', fontSize: 11, color: 'var(--text-muted)' }}>
-          Data: Binance · Bybit · OKX · Bitget · Gate.io · Hyperliquid · Deribit · Alternative.me · Farside Investors · Auto-refreshes every 5 minutes
+          Data: Coinalyze · Deribit · Alternative.me · Farside Investors · Auto-refreshes every 5 minutes
         </div>
-
-        {c?.openInterest?.note && (
-          <div style={{ textAlign: 'center', padding: '0 0 8px', fontSize: 10, color: 'var(--text-muted)' }}>
-            ⚠️ {c.openInterest.note}
-          </div>
-        )}
       </main>
     </div>
   );
