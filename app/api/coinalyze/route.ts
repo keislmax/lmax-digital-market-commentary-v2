@@ -11,17 +11,22 @@ export async function GET() {
     const cached = await redis.get('coinalyze:data');
     if (!cached) return NextResponse.json({ error: 'cache_empty' }, { status: 503 });
     const raw: any = typeof cached === 'string' ? JSON.parse(cached) : cached;
+
+    // Use last fundChart value as fallback if avgFunding is 0
+    const fundChart = raw.fundChart || [];
+    const currentFunding = raw.avgFunding || (fundChart.length ? fundChart[fundChart.length - 1].v : 0);
+
     return NextResponse.json({
-      price: 0, // price comes from CoinGecko
+      price: 0,
       openInterest: {
         current: raw.totalOI || 0,
         change24h: raw.oiChange24h || 0,
         charts: raw.oiCharts || {},
       },
       fundingRate: {
-        current: raw.avgFunding || 0,
-        annualized: (raw.avgFunding || 0) * 3 * 365,
-        chart: raw.fundChart || [],
+        current: currentFunding,
+        annualized: currentFunding * 3 * 365,
+        chart: fundChart,
       },
       liquidations: {
         total24h: raw.totalLiqs24h || 0,
