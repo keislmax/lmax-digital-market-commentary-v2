@@ -13,6 +13,8 @@ const TIMEFRAMES = ['24h', '7d', '30d', '90d', '1y'] as const;
 type TF = typeof TIMEFRAMES[number];
 const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 type Asset = typeof ASSETS[number];
+const CHART_ASSETS = ['ALL', 'BTC', 'ETH', 'SOL', 'XRP'] as const;
+type ChartAsset = typeof CHART_ASSETS[number];
 
 const EXCHANGES = 'Binance · Bybit · OKX · Deribit · BitMEX · Kraken';
 
@@ -23,7 +25,6 @@ function fmtUSD(v: number) {
   if (abs >= 1e3) return '$' + (v/1e3).toFixed(1) + 'K';
   return '$' + v.toFixed(2);
 }
-
 function fmtTime(ts: number) {
   return new Date(ts * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
@@ -68,20 +69,17 @@ function Sparkline({ data, color = '#2563eb', height = 80, labels, formatValue }
   const hoverPoint = hoverIdx !== null ? getPoint(hoverIdx) : null;
   const tooltipLeft = hoverPoint ? (hoverPoint.x / W * 100) : 0;
 
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const xRatio = (e.clientX - rect.left) / rect.width;
-    const idx = Math.max(0, Math.min(data.length - 1, Math.round(xRatio * (data.length - 1))));
-    setHoverIdx(idx);
-  };
-
   return (
     <div style={{ position: 'relative' }}>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         style={{ width: '100%', height, display: 'block', cursor: 'crosshair' }}
         preserveAspectRatio="none"
-        onMouseMove={handleMouseMove}
+        onMouseMove={e => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const idx = Math.max(0, Math.min(data.length - 1, Math.round((e.clientX - rect.left) / rect.width * (data.length - 1))));
+          setHoverIdx(idx);
+        }}
         onMouseLeave={() => setHoverIdx(null)}
       >
         <polyline points={polylinePoints} fill="none" stroke={color} strokeWidth="1.5" />
@@ -94,20 +92,13 @@ function Sparkline({ data, color = '#2563eb', height = 80, labels, formatValue }
       </svg>
       {hoverIdx !== null && data[hoverIdx] !== undefined && (
         <div style={{
-          position: 'absolute',
-          bottom: '100%',
+          position: 'absolute', bottom: '100%',
           left: `${tooltipLeft}%`,
           transform: tooltipLeft > 70 ? 'translateX(-100%)' : tooltipLeft < 20 ? 'translateX(0)' : 'translateX(-50%)',
-          background: 'rgba(28,28,26,.92)',
-          color: '#fff',
-          padding: '4px 10px',
-          borderRadius: 4,
-          fontSize: 11,
-          fontFamily: 'var(--mono)',
-          pointerEvents: 'none',
-          whiteSpace: 'nowrap',
-          marginBottom: 6,
-          zIndex: 10,
+          background: 'rgba(28,28,26,.92)', color: '#fff',
+          padding: '4px 10px', borderRadius: 4, fontSize: 11,
+          fontFamily: 'var(--mono)', pointerEvents: 'none',
+          whiteSpace: 'nowrap', marginBottom: 6, zIndex: 10,
           boxShadow: '0 2px 8px rgba(0,0,0,.2)',
         }}>
           {labels?.[hoverIdx] && <div style={{ fontSize: 9, opacity: 0.65, marginBottom: 1 }}>{labels[hoverIdx]}</div>}
@@ -122,6 +113,71 @@ const CARD_TITLE_STYLE: React.CSSProperties = {
   fontSize: 10, fontWeight: 700, letterSpacing: '.06em',
   textTransform: 'uppercase', color: '#1a1917',
 };
+
+function AssetTabs({ active, onChange }: { active: ChartAsset, onChange: (a: ChartAsset) => void }) {
+  return (
+    <div style={{ display: 'flex', gap: 3 }}>
+      {CHART_ASSETS.map(a => (
+        <button key={a} onClick={() => onChange(a)} style={{
+          padding: '2px 7px', borderRadius: 3, fontSize: 10, fontWeight: 600,
+          background: active === a ? '#1a1917' : 'var(--surface2)',
+          color: active === a ? '#fff' : 'var(--text-muted)',
+          border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+        }}>{a}</button>
+      ))}
+    </div>
+  );
+}
+
+function ChartCard({ label, source, value, sub, change, chartsByAsset, valueColor, color, formatValue, isFunding }: {
+  label: string; source?: string; value: string; sub?: string; change?: number;
+  chartsByAsset?: Record<string, Record<string, any[]>>;
+  valueColor?: string; color?: string; formatValue?: (v: number) => string;
+  isFunding?: boolean;
+}) {
+  const [tf, setTf] = useState<TF>('24h');
+  const [asset, setAsset] = useState<ChartAsset>('ALL');
+
+  const assetKey = asset === 'ALL' ? 'total' : asset;
+  const chartData = chartsByAsset?.[assetKey]?.[tf] || [];
+  const values = chartData.map((p: any) => p.v !== undefined ? p.v : (p.l || 0) + (p.s || 0));
+  const isHourly = tf === '24h';
+  const labels = chartData.map((p: any) => isHourly ? fmtTime(p.t) : fmtDate(p.t));
+  const chartColor = color || valueColor || '#2563eb';
+
+  return (
+    <div className="card" style={{ padding: '14px 16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+        <div style={CARD_TITLE_STYLE}>{label}</div>
+        {source && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{source}</div>}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
+        <div>
+          <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: valueColor || 'var(--text)', lineHeight: 1.1 }}>{value}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, minHeight: 18 }}>
+            {change !== undefined && <Badge value={change} />}
+            {sub && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{sub}</span>}
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 3 }}>
+            {TIMEFRAMES.map(t => (
+              <button key={t} onClick={() => setTf(t)} style={{
+                padding: '2px 7px', borderRadius: 3, fontSize: 10, fontWeight: 600,
+                background: tf === t ? 'var(--accent)' : 'var(--surface2)',
+                color: tf === t ? '#fff' : 'var(--text-muted)',
+                border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+              }}>{t.toUpperCase()}</button>
+            ))}
+          </div>
+          <AssetTabs active={asset} onChange={setAsset} />
+        </div>
+      </div>
+      <Sparkline data={values} color={chartColor} height={80} labels={labels} formatValue={formatValue} />
+      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 6, letterSpacing: '0.02em' }}>{EXCHANGES}</div>
+    </div>
+  );
+}
 
 function MetricCard({ label, value, sub, change, source, valueColor, children }: {
   label: string; value: string; sub?: string; change?: number;
@@ -143,52 +199,9 @@ function MetricCard({ label, value, sub, change, source, valueColor, children }:
   );
 }
 
-function ChartCard({ label, source, value, sub, change, charts, chartLabels, valueColor, color, formatValue }: {
-  label: string; source?: string; value: string; sub?: string; change?: number;
-  charts?: Record<string, any[]>; chartLabels?: Record<string, string[]>;
-  valueColor?: string; color?: string; formatValue?: (v: number) => string;
-}) {
-  const [tf, setTf] = useState<TF>('24h');
-  const chartData = charts?.[tf] || [];
-  const values = chartData.map((p: any) => p.v !== undefined ? p.v : (p.l || 0) + (p.s || 0));
-  const labels = chartLabels?.[tf];
-  const chartColor = color || valueColor || '#2563eb';
-
-  return (
-    <div className="card" style={{ padding: '14px 16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-        <div style={CARD_TITLE_STYLE}>{label}</div>
-        {source && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{source}</div>}
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
-        <div>
-          <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: valueColor || 'var(--text)', lineHeight: 1.1 }}>{value}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, minHeight: 18 }}>
-            {change !== undefined && <Badge value={change} />}
-            {sub && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{sub}</span>}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 3 }}>
-          {TIMEFRAMES.map(t => (
-            <button key={t} onClick={() => setTf(t)} style={{
-              padding: '2px 7px', borderRadius: 3, fontSize: 10, fontWeight: 600,
-              background: tf === t ? 'var(--accent)' : 'var(--surface2)',
-              color: tf === t ? '#fff' : 'var(--text-muted)',
-              border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-            }}>{t.toUpperCase()}</button>
-          ))}
-        </div>
-      </div>
-      <Sparkline data={values} color={chartColor} height={80} labels={labels} formatValue={formatValue} />
-      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 6, letterSpacing: '0.02em' }}>{EXCHANGES}</div>
-    </div>
-  );
-}
-
 function SpotPriceCard({ prices }: { prices: any }) {
   const [asset, setAsset] = useState<Asset>('BTC');
   const p = prices?.[asset];
-
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
@@ -292,38 +305,6 @@ export default function Dashboard() {
   const fundingColor = !c?.fundingRate?.current ? 'var(--text)'
     : c.fundingRate.current > 0 ? 'var(--green)' : 'var(--red)';
 
-  const buildLabels = (charts: any, tf: string, isHourly: boolean) =>
-    (charts?.[tf] || []).map((p: any) => isHourly ? fmtTime(p.t) : fmtDate(p.t));
-
-  const oiChartLabels: Record<string, string[]> = {
-    '24h': buildLabels(c?.openInterest?.charts, '24h', true),
-    '7d':  buildLabels(c?.openInterest?.charts, '7d', false),
-    '30d': buildLabels(c?.openInterest?.charts, '30d', false),
-    '90d': buildLabels(c?.openInterest?.charts, '90d', false),
-    '1y':  buildLabels(c?.openInterest?.charts, '1y', false),
-  };
-  const liqChartLabels: Record<string, string[]> = {
-    '24h': buildLabels(c?.liquidations?.charts, '24h', true),
-    '7d':  buildLabels(c?.liquidations?.charts, '7d', false),
-    '30d': buildLabels(c?.liquidations?.charts, '30d', false),
-    '90d': buildLabels(c?.liquidations?.charts, '90d', false),
-    '1y':  buildLabels(c?.liquidations?.charts, '1y', false),
-  };
-  const volChartLabels: Record<string, string[]> = {
-    '24h': buildLabels(c?.volume?.charts, '24h', true),
-    '7d':  buildLabels(c?.volume?.charts, '7d', false),
-    '30d': buildLabels(c?.volume?.charts, '30d', false),
-    '90d': buildLabels(c?.volume?.charts, '90d', false),
-    '1y':  buildLabels(c?.volume?.charts, '1y', false),
-  };
-  const fundChartLabels: Record<string, string[]> = {
-    '24h': buildLabels(c?.fundingRate?.charts, '24h', true),
-    '7d':  buildLabels(c?.fundingRate?.charts, '7d', false),
-    '30d': buildLabels(c?.fundingRate?.charts, '30d', false),
-    '90d': buildLabels(c?.fundingRate?.charts, '90d', false),
-    '1y':  buildLabels(c?.fundingRate?.charts, '1y', false),
-  };
-
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       <header style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 50 }}>
@@ -392,8 +373,7 @@ export default function Dashboard() {
             label="Open Interest" source="Coinalyze"
             value={loading ? '—' : formatUSD(c?.openInterest?.current || 0)}
             change={c?.openInterest?.change24h}
-            charts={c?.openInterest?.charts}
-            chartLabels={oiChartLabels}
+            chartsByAsset={c?.openInterest?.chartsByAsset}
             color="#2563eb"
             formatValue={fmtUSD}
           />
@@ -401,8 +381,7 @@ export default function Dashboard() {
             label="Liquidations" source="Coinalyze"
             value={loading ? '—' : formatUSD(c?.liquidations?.total24h || 0)}
             sub={c?.liquidations ? `Longs: ${formatUSD(c.liquidations.longs24h)} · Shorts: ${formatUSD(c.liquidations.shorts24h)}` : undefined}
-            charts={c?.liquidations?.charts}
-            chartLabels={liqChartLabels}
+            chartsByAsset={c?.liquidations?.chartsByAsset}
             color="#dc2626"
             formatValue={fmtUSD}
           />
@@ -412,8 +391,7 @@ export default function Dashboard() {
           <ChartCard
             label="Volume" source="Coinalyze"
             value={loading ? '—' : formatUSD(c?.volume?.total24h || 0)}
-            charts={c?.volume?.charts}
-            chartLabels={volChartLabels}
+            chartsByAsset={c?.volume?.chartsByAsset}
             color="#16a34a"
             formatValue={fmtUSD}
           />
@@ -421,8 +399,7 @@ export default function Dashboard() {
             label="Funding Rate" source="Coinalyze"
             value={loading ? '—' : fundingPct}
             sub={c?.fundingRate?.current > 0 ? 'Longs paying shorts' : c?.fundingRate?.current < 0 ? 'Shorts paying longs' : 'BTC avg across exchanges'}
-            charts={c?.fundingRate?.charts}
-            chartLabels={fundChartLabels}
+            chartsByAsset={c?.fundingRate?.chartsByAsset}
             valueColor={fundingColor}
             color={fundingColor === 'var(--text)' ? '#6b6860' : fundingColor}
             formatValue={v => (v * 100).toFixed(4) + '%'}
