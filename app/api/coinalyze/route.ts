@@ -12,9 +12,10 @@ export async function GET() {
     if (!cached) return NextResponse.json({ error: 'cache_empty' }, { status: 503 });
     const raw: any = typeof cached === 'string' ? JSON.parse(cached) : cached;
 
-    // Use last fundChart value as fallback if avgFunding is 0
-    const fundChart = raw.fundChart || [];
-    const currentFunding = raw.avgFunding || (fundChart.length ? fundChart[fundChart.length - 1].v : 0);
+    const fundCharts = raw.fundCharts || {};
+    const fundChart24h = fundCharts['24h'] || raw.fundChart || [];
+    const currentFunding = raw.avgFunding ||
+      (fundChart24h.length ? fundChart24h[fundChart24h.length - 1].v : 0);
 
     return NextResponse.json({
       price: 0,
@@ -26,7 +27,13 @@ export async function GET() {
       fundingRate: {
         current: currentFunding,
         annualized: currentFunding * 3 * 365,
-        chart: fundChart,
+        charts: {
+          '24h': fundChart24h,
+          '7d':  fundCharts['7d']  || [],
+          '30d': fundCharts['30d'] || [],
+          '90d': fundCharts['90d'] || [],
+          '1y':  fundCharts['1y']  || [],
+        },
       },
       liquidations: {
         total24h: raw.totalLiqs24h || 0,
