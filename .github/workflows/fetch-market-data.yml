@@ -2,8 +2,8 @@ name: Fetch Market Data
 
 on:
   schedule:
-    - cron: '0 * * * *'  # every hour
-  workflow_dispatch:       # allows manual trigger
+    - cron: '0 * * * *'
+  workflow_dispatch:
 
 jobs:
   fetch:
@@ -29,11 +29,12 @@ jobs:
             'XRPUSDT_PERP.A','XRPUSDT_PERP.3','XRPUSDT_PERP.4','XRPPERP.6',
           ].join(',');
 
-          function fetch(url, opts={}) {
-            return new Promise((res, rej) => {
+          function request(url, opts={}) {
+            return new Promise((res) => {
               const u = new URL(url);
               const options = {
-                hostname: u.hostname, path: u.pathname + u.search,
+                hostname: u.hostname,
+                path: u.pathname + u.search,
                 method: opts.method || 'GET',
                 headers: { 'Content-Type': 'application/json', ...(opts.headers||{}) },
               };
@@ -44,7 +45,7 @@ jobs:
                   try { res(JSON.parse(data)); } catch { res(null); }
                 });
               });
-              req.on('error', () => res(null));
+              req.on('error', e => { console.log('Request error:', e.message); res(null); });
               if (opts.body) req.write(opts.body);
               req.end();
             });
@@ -55,42 +56,60 @@ jobs:
           function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
           async function fetchCoinalyze(path) {
-            for (let i = 0; i < 3; i++) {
-              const data = await fetch(`https://api.coinalyze.net/v1${path}`, {
+            for (let i = 0; i < 4; i++) {
+              const data = await request(`https://api.coinalyze.net/v1${path}`, {
                 headers: { 'api_key': COINALYZE_KEY }
               });
-              if (data && !data.message) return data;
-              console.log(`Retry ${i+1} for ${path}`);
-              await sleep(10000);
+              if (data && !data.message) {
+                console.log(`✓ Success: ${path.split('?')[0]}`);
+                return data;
+              }
+              const waitSec = data?.message ? 65 : 15;
+              console.log(`Retry ${i+1} for ${path.split('?')[0]} (waiting ${waitSec}s)...`);
+              await sleep(waitSec * 1000);
             }
+            console.log(`✗ Failed after retries: ${path.split('?')[0]}`);
             return null;
           }
 
           async function writeRedis(key, value, ttl=7200) {
-            const body = JSON.stringify(['SET', key, JSON.stringify(value), 'EX', ttl]);
-            const result = await fetch(`${REDIS_URL}/pipeline`, {
+            const valueStr = JSON.stringify(value);
+            // Upstash pipeline format: array of command arrays
+            const body = JSON.stringify([['SET', key, valueStr, 'EX', String(ttl)]]);
+            console.log(`Writing to Redis key: ${key}, value size: ${valueStr.length} bytes`);
+            const result = await request(`${REDIS_URL}/pipeline`, {
               method: 'POST',
-              headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
+              headers: {
+                'Authorization': `Bearer ${REDIS_TOKEN}`,
+                'Content-Type': 'application/json',
+              },
               body
             });
-            console.log('Redis write result:', JSON.stringify(result));
+            console.log('Redis result:', JSON.stringify(result));
+            return result;
           }
 
           async function main() {
             const from24h = ago(86400);
             const to = nowSec();
 
-            console.log('Fetching Coinalyze data...');
-            const [oiCurrent, fundingCurrent, oiHistory, fundingHistory, liqHistory] = await Promise.all([
-              fetchCoinalyze(`/open-interest?symbols=${SYMBOLS}&convert_to_usd=true`),
-              fetchCoinalyze(`/funding-rate?symbols=${SYMBOLS}`),
-              fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
-              fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}`),
-              fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
-            ]);
+            console.log('--- Fetching Coinalyze data ---');
 
-            console.log('OI count:', oiCurrent?.length);
-            console.log('Liq history count:', liqHistory?.length);
+            // Fetch sequentially to avoid rate limits
+            const oiCurrent = await fetchCoinalyze(`/open-interest?symbols=${SYMBOLS}&convert_to_usd=true`);
+            await sleep(2000);
+            const fundingCurrent = await fetchCoinalyze(`/funding-rate?symbols=${SYMBOLS}`);
+            await sleep(2000);
+            const oiHistory = await fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+            await sleep(2000);
+            const fundingHistory = await fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}`);
+            await sleep(2000);
+            const liqHistory = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+
+            console.log('OI count:', oiCurrent?.length ?? 'null');
+            console.log('Funding count:', fundingCurrent?.length ?? 'null');
+            console.log('OI history count:', oiHistory?.length ?? 'null');
+            console.log('Liq history count:', liqHistory?.length ?? 'null');
 
             const totalOI = (oiCurrent||[]).reduce((s,x) => s+(x.value||0), 0);
 
@@ -138,13 +157,16 @@ jobs:
               updatedAt: Date.now(),
             };
 
+            console.log('--- Results ---');
             console.log('totalOI:', result.totalOI);
             console.log('totalLiqs:', result.totalLiqs);
             console.log('avgFunding:', result.avgFunding);
+            console.log('oiChart points:', result.oiChart.length);
+            console.log('liqChart points:', result.liqChart.length);
 
             await writeRedis('coinalyze:data', result, 7200);
-            console.log('Done!');
+            console.log('--- Done! ---');
           }
 
-          main().catch(e => { console.error(e); process.exit(1); });
+          main().catch(e => { console.error('Fatal error:', e); process.exit(1); });
           EOF
