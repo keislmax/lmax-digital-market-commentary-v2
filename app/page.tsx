@@ -16,84 +16,23 @@ import ETFCard from '@/components/ETFCard';
 
 const REFRESH_INTERVAL = 5 * 60 * 1000;
 
-const SYMBOLS = [
-  'BTCUSDT_PERP.A','BTCUSDT_PERP.3','BTCUSDT_PERP.6',
-  'ETHUSDT_PERP.A','ETHUSDT_PERP.3','ETHUSDT_PERP.6',
-  'SOLUSDT_PERP.A','SOLUSDT_PERP.3','SOLUSDT_PERP.6',
-  'XRPUSDT_PERP.A','XRPUSDT_PERP.3','XRPUSDT_PERP.6',
-].join(',');
-
 function nowSec() { return Math.floor(Date.now() / 1000); }
 function ago(s: number) { return nowSec() - s; }
 
 async function fetchCoinalyze(endpoint: string, extra = '') {
   const res = await fetch(
-    `/api/coinalyze?endpoint=${endpoint}&symbols=${encodeURIComponent(SYMBOLS)}&extra=${encodeURIComponent(extra)}`
+    `/api/coinalyze?endpoint=${endpoint}&symbols=BTCUSDT&extra=${encodeURIComponent(extra)}`
   );
   if (!res.ok) throw new Error(`${endpoint} failed: ${res.status}`);
   return res.json();
 }
 
 async function loadCoinalyzeData() {
-  const from24h = ago(86400);
-  const to = nowSec();
-
-  const [oiCurrent, fundingCurrent, oiHistory, fundingHistory, liqHistory] = await Promise.all([
-    fetchCoinalyze('open-interest', 'convert_to_usd=true'),
-    fetchCoinalyze('funding-rate'),
-    fetchCoinalyze('open-interest-history', `interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
-    fetchCoinalyze('funding-rate-history', `interval=1hour&from=${from24h}&to=${to}`),
-    fetchCoinalyze('liquidation-history', `interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
-  ]);
-
-  const totalOI = (oiCurrent as any[]).reduce((sum: number, s: any) => sum + (s.value || 0), 0);
-
-  const oiByTime: Record<number, number> = {};
-  for (const sym of (oiHistory as any[])) {
-    for (const point of sym.history || []) {
-      oiByTime[point.t] = (oiByTime[point.t] || 0) + point.c;
-    }
-  }
-  const oiChart = Object.entries(oiByTime).map(([t, v]) => ({ t: Number(t), v })).sort((a, b) => a.t - b.t);
-  const oiChange24h = oiChart.length >= 2
-    ? ((oiChart[oiChart.length - 1].v - oiChart[0].v) / oiChart[0].v) * 100
-    : 0;
-
-  const liqByTime: Record<number, { l: number; s: number }> = {};
-  for (const sym of (liqHistory as any[])) {
-    for (const point of sym.history || []) {
-      if (!liqByTime[point.t]) liqByTime[point.t] = { l: 0, s: 0 };
-      liqByTime[point.t].l += point.l || 0;
-      liqByTime[point.t].s += point.s || 0;
-    }
-  }
-  const liqChart = Object.entries(liqByTime).map(([t, v]) => ({ t: Number(t), ...v })).sort((a, b) => a.t - b.t);
-  const totalLiqs = liqChart.reduce((sum, p) => sum + p.l + p.s, 0);
-  const totalLongLiqs = liqChart.reduce((sum, p) => sum + p.l, 0);
-  const totalShortLiqs = liqChart.reduce((sum, p) => sum + p.s, 0);
-
-  const fundByTime: Record<number, number[]> = {};
-  for (const sym of (fundingHistory as any[])) {
-    for (const point of sym.history || []) {
-      if (!fundByTime[point.t]) fundByTime[point.t] = [];
-      fundByTime[point.t].push(point.o);
-    }
-  }
-  const fundChart = Object.entries(fundByTime)
-    .map(([t, vals]) => ({ t: Number(t), v: vals.reduce((a, b) => a + b, 0) / vals.length }))
-    .sort((a, b) => a.t - b.t);
-  const avgFunding = (fundingCurrent as any[]).length
-    ? (fundingCurrent as any[]).reduce((s: number, f: any) => s + (f.last_funding_rate || 0), 0) / (fundingCurrent as any[]).length
-    : 0;
-
-  return {
-    price: (oiCurrent as any[])[0]?.price || 0,
-    openInterest: { current: totalOI, change24h: oiChange24h, chart: oiChart },
-    fundingRate: { current: avgFunding, annualized: avgFunding * 3 * 365, chart: fundChart },
-    liquidations: { total24h: totalLiqs, longs24h: totalLongLiqs, shorts24h: totalShortLiqs, chart: liqChart },
-    volume: { total24h: 0, chart: [] },
-    updatedAt: Date.now(),
-  };
+  const res = await fetch('/api/coinalyze');
+  if (!res.ok) throw new Error(`coinalyze failed: ${res.status}`);
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
 }
 
 function StatBadge({ value, suffix = '%' }: { value?: number; suffix?: string }) {
@@ -135,12 +74,21 @@ export default function Dashboard() {
     if (isManual) setRefreshing(true);
     setError(null);
     try {
-      const [coinData, otherRes] = await Promise.all([
+      const [coinResult, otherResult] = await Promise.allSettled([
         loadCoinalyzeData(),
         fetch('/api/all', { cache: 'no-store' }).then(r => r.json()),
       ]);
-      setCoinalyze(coinData);
-      setOtherData(otherRes);
+
+      if (coinResult.status === 'fulfilled') {
+        setCoinalyze(coinResult.value);
+      } else {
+        setError(coinResult.reason?.message || 'Coinalyze data unavailable');
+      }
+
+      if (otherResult.status === 'fulfilled') {
+        setOtherData(otherResult.value);
+      }
+
       setLastFetch(Date.now());
     } catch (err: any) {
       setError(err.message);
@@ -203,7 +151,7 @@ export default function Dashboard() {
         {error && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 8, background: 'var(--red-light)', border: '1px solid #fecaca', marginBottom: 16 }}>
             <AlertCircle size={14} style={{ color: 'var(--red)' }} />
-            <span style={{ fontSize: 13, color: 'var(--red)' }}>Data error: {error}</span>
+            <span style={{ fontSize: 13, color: 'var(--red)' }}>Derivatives data unavailable: {error}</span>
           </div>
         )}
 
@@ -214,27 +162,27 @@ export default function Dashboard() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
           <TopMetric
             label="Open Interest (24H)"
-            value={loading ? '—' : formatUSD(c?.openInterest?.current || 0)}
+            value={loading ? '—' : c ? formatUSD(c.openInterest?.current || 0) : '—'}
             change={c?.openInterest?.change24h}
-            source="Coinalyze"
+            source="Multi-exchange"
           />
           <TopMetric
             label="Volume (24H)"
-            value={loading ? '—' : formatUSD(c?.volume?.total24h || 0)}
-            source="Coinalyze"
+            value={loading ? '—' : c ? formatUSD(c.volume?.total24h || 0) : '—'}
+            source="Multi-exchange"
           />
           <TopMetric
             label="Total Liquidations (24H)"
-            value={loading ? '—' : formatUSD(c?.liquidations?.total24h || 0)}
-            sub={c?.liquidations ? `Longs: ${formatUSD(c.liquidations.longs24h)} · Shorts: ${formatUSD(c.liquidations.shorts24h)}` : undefined}
-            source="Coinalyze"
+            value={loading ? '—' : c ? formatUSD(c.liquidations?.total24h || 0) : '—'}
+            sub={c?.liquidations?.note}
+            source="Hyperliquid"
           />
           <TopMetric
             label="Funding Rate (8H)"
             value={loading ? '—' : fundingPct ? `${fundingPct}%` : '—'}
-            sub="Per 8-hour settlement period"
+            sub="BTC avg across exchanges"
             valueColor={fundingColor}
-            source="Coinalyze"
+            source="Multi-exchange"
           />
         </div>
 
@@ -255,8 +203,14 @@ export default function Dashboard() {
         </div>
 
         <div style={{ textAlign: 'center', padding: '12px 0 4px', fontSize: 11, color: 'var(--text-muted)' }}>
-          Data: Coinalyze · Deribit · Alternative.me · Farside Investors · Auto-refreshes every 5 minutes
+          Data: Binance · Bybit · OKX · Bitget · Gate.io · Hyperliquid · Deribit · Alternative.me · Farside Investors · Auto-refreshes every 5 minutes
         </div>
+
+        {c?.openInterest?.note && (
+          <div style={{ textAlign: 'center', padding: '0 0 8px', fontSize: 10, color: 'var(--text-muted)' }}>
+            ⚠️ {c.openInterest.note}
+          </div>
+        )}
       </main>
     </div>
   );
