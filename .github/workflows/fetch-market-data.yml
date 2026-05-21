@@ -8,7 +8,7 @@ on:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 15
     steps:
       - name: Fetch and cache market data
         env:
@@ -34,19 +34,15 @@ jobs:
                 r.on('data', c => data += c);
                 r.on('end', () => { try { res(JSON.parse(data)); } catch { res(null); } });
               });
-              req.on('error', e => { console.log('Request error:', e.message); res(null); });
+              req.on('error', () => res(null));
               if (opts.body) req.write(opts.body);
               req.end();
             });
           }
 
           function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-          function chunk(arr, size) {
-            const out = [];
-            for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i+size));
-            return out;
-          }
           function nowSec() { return Math.floor(Date.now()/1000); }
+          function ago(s) { return nowSec() - s; }
 
           async function fetchCoinalyze(path, retries=3) {
             for (let i = 0; i < retries; i++) {
@@ -55,133 +51,171 @@ jobs:
               });
               if (data && !data.message) return data;
               const wait = data?.message ? 62 : 10;
-              console.log(`  Retry ${i+1}: ${path.split('?')[0]} (waiting ${wait}s)`);
+              console.log(`Retry ${i+1}: ${path.split('?')[0]} (${wait}s)`);
               await sleep(wait * 1000);
             }
-            console.log(`  Failed: ${path.split('?')[0]}`);
             return null;
           }
 
-          async function fetchEndpointAllChunks(endpoint, chunks, extraParams) {
-            const results = [];
-            for (let i = 0; i < chunks.length; i++) {
-              const data = await fetchCoinalyze(`/${endpoint}?symbols=${chunks[i].join(',')}&${extraParams}`);
-              if (Array.isArray(data)) results.push(...data);
-              if (i < chunks.length-1) await sleep(1600);
-              if (i % 5 === 4) console.log(`  ${i+1}/${chunks.length} chunks done`);
-            }
-            return results;
-          }
-
           async function writeRedis(key, value, ttl=86400) {
-            const valueStr = JSON.stringify(value);
-            console.log(`Writing ${key}: ${valueStr.length} bytes`);
-            const body = JSON.stringify([['SET', key, valueStr, 'EX', String(ttl)]]);
+            const body = JSON.stringify([['SET', key, JSON.stringify(value), 'EX', String(ttl)]]);
             const r = await request(`${REDIS_URL}/pipeline`, {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
               body
             });
-            console.log('Redis result:', JSON.stringify(r));
+            console.log(`Redis ${key}:`, JSON.stringify(r));
           }
 
+          const SYMBOLS = [
+            'BTCUSDT_PERP.A','BTCUSD_PERP.0','BTCUSDT_PERP.3','BTC-PERPETUAL.2','BTCUSDT_PERP.4','BTCPERP.6',
+            'ETHUSDT_PERP.A','ETHUSD_PERP.0','ETHUSDT_PERP.3','ETH-PERPETUAL.2','ETHUSDT_PERP.4','ETHPERP.6',
+            'SOLUSDT_PERP.A','SOLUSDT_PERP.3','SOLUSDT_PERP.4','SOLPERP.6',
+            'XRPUSDT_PERP.A','XRPUSDT_PERP.3','XRPUSDT_PERP.4','XRPPERP.6',
+          ].join(',');
+
           async function main() {
-            const from24h = nowSec() - 86400;
+            const from24h = ago(86400);
+            const from7d = ago(7*86400);
+            const from30d = ago(30*86400);
+            const from90d = ago(90*86400);
+            const from1y = ago(365*86400);
             const to = nowSec();
 
-            // Step 1: Get all symbols
-            console.log('\n=== Fetching symbol list ===');
-            const markets = await fetchCoinalyze('/future-markets');
-            if (!Array.isArray(markets)) { console.error('Failed to fetch markets'); process.exit(1); }
-            const allSymbols = markets.map(m => m.symbol);
-            console.log(`Total symbols: ${allSymbols.length}`);
-            const chunks = chunk(allSymbols, 200);
-            console.log(`Total chunks per endpoint: ${chunks.length}`);
-            await sleep(2000);
-
-            // Step 2: OI current
-            console.log('\n=== Fetching OI (current) ===');
-            const oiCurrent = await fetchEndpointAllChunks('open-interest', chunks, 'convert_to_usd=true');
-            const totalOI = oiCurrent.reduce((s,x) => s+(x.value||0), 0);
-            console.log(`totalOI: ${totalOI}`);
+            console.log('Fetching 24H data...');
+            const [oiCurrent, fundingCurrent, oiH24, fundH24, liqH24, volH24] = await Promise.all([
+              fetchCoinalyze(`/open-interest?symbols=${SYMBOLS}&convert_to_usd=true`),
+              fetchCoinalyze(`/funding-rate?symbols=${SYMBOLS}`),
+              fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
+              fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}`),
+              fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`),
+              fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}`),
+            ]);
             await sleep(3000);
 
-            // Step 3: OI history
-            console.log('\n=== Fetching OI history ===');
-            const oiHistory = await fetchEndpointAllChunks('open-interest-history', chunks, `interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
-            const oiByTime = {};
-            for (const sym of oiHistory) {
-              for (const p of (sym.history||[])) { oiByTime[p.t] = (oiByTime[p.t]||0) + p.c; }
-            }
-            const oiChart = Object.entries(oiByTime).map(([t,v])=>({t:+t,v})).sort((a,b)=>a.t-b.t);
-            const oiChange24h = oiChart.length>=2 ? ((oiChart[oiChart.length-1].v - oiChart[0].v) / oiChart[0].v)*100 : 0;
-            console.log(`oiChart points: ${oiChart.length}, change24h: ${oiChange24h}`);
+            console.log('Fetching historical data (daily)...');
+            const [oiH7d, liqH7d, volH7d] = await Promise.all([
+              fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`),
+              fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`),
+              fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}`),
+            ]);
             await sleep(3000);
 
-            // Step 4: Liquidations
-            console.log('\n=== Fetching liquidations ===');
-            const liqHistory = await fetchEndpointAllChunks('liquidation-history', chunks, `interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
-            const liqByTime = {};
-            for (const sym of liqHistory) {
-              for (const p of (sym.history||[])) {
-                if (!liqByTime[p.t]) liqByTime[p.t] = {l:0,s:0};
-                liqByTime[p.t].l += p.l||0;
-                liqByTime[p.t].s += p.s||0;
+            const [oiH30d, liqH30d, volH30d] = await Promise.all([
+              fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`),
+              fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`),
+              fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}`),
+            ]);
+            await sleep(3000);
+
+            const [oiH90d, liqH90d, volH90d] = await Promise.all([
+              fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`),
+              fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`),
+              fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}`),
+            ]);
+            await sleep(3000);
+
+            const [oiH1y, liqH1y, volH1y] = await Promise.all([
+              fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`),
+              fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`),
+              fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}`),
+            ]);
+
+            // Aggregation helpers
+            function aggregateOI(data) {
+              const byTime = {};
+              for (const sym of (data||[])) {
+                for (const p of (sym.history||[])) { byTime[p.t] = (byTime[p.t]||0) + p.c; }
               }
+              return Object.entries(byTime).map(([t,v])=>({t:+t,v})).sort((a,b)=>a.t-b.t);
             }
-            const liqChart = Object.entries(liqByTime).map(([t,v])=>({t:+t,...v})).sort((a,b)=>a.t-b.t);
-            const totalLiqs = liqChart.reduce((s,p)=>s+p.l+p.s, 0);
-            const totalLongLiqs = liqChart.reduce((s,p)=>s+p.l, 0);
-            const totalShortLiqs = liqChart.reduce((s,p)=>s+p.s, 0);
-            console.log(`totalLiqs: ${totalLiqs}`);
-            await sleep(3000);
-
-            // Step 5: Volume
-            console.log('\n=== Fetching volume ===');
-            const volHistory = await fetchEndpointAllChunks('ohlcv-history', chunks, `interval=1hour&from=${from24h}&to=${to}`);
-            let totalVolume = 0;
-            for (const sym of volHistory) {
-              for (const p of (sym.history||[])) { totalVolume += (p.v||0) * (p.c||0); }
-            }
-            console.log(`totalVolume: ${totalVolume}`);
-            await sleep(3000);
-
-            // Step 6: Funding rates (BTC/ETH/SOL/XRP only)
-            console.log('\n=== Fetching funding rates ===');
-            const FUNDING_SYMBOLS = [
-              'BTCUSDT_PERP.A','BTCUSD_PERP.0','BTCUSDT_PERP.3','BTC-PERPETUAL.2','BTCUSDT_PERP.4','BTCPERP.6',
-              'ETHUSDT_PERP.A','ETHUSD_PERP.0','ETHUSDT_PERP.3','ETH-PERPETUAL.2','ETHUSDT_PERP.4','ETHPERP.6',
-              'SOLUSDT_PERP.A','SOLUSDT_PERP.3','SOLUSDT_PERP.4','SOLPERP.6',
-              'XRPUSDT_PERP.A','XRPUSDT_PERP.3','XRPUSDT_PERP.4','XRPPERP.6',
-            ].join(',');
-            const fundingCurrent = await fetchCoinalyze(`/funding-rate?symbols=${FUNDING_SYMBOLS}`);
-            await sleep(2000);
-            const fundingHistory = await fetchCoinalyze(`/funding-rate-history?symbols=${FUNDING_SYMBOLS}&interval=1hour&from=${from24h}&to=${to}`);
-            const avgFunding = Array.isArray(fundingCurrent) && fundingCurrent.length
-              ? fundingCurrent.reduce((s,f)=>s+(f.last_funding_rate||0),0)/fundingCurrent.length : 0;
-            const fundByTime = {};
-            for (const sym of (fundingHistory||[])) {
-              for (const p of (sym.history||[])) {
-                if (!fundByTime[p.t]) fundByTime[p.t] = [];
-                fundByTime[p.t].push(p.o);
+            function aggregateLiq(data) {
+              const byTime = {};
+              for (const sym of (data||[])) {
+                for (const p of (sym.history||[])) {
+                  if (!byTime[p.t]) byTime[p.t] = {l:0,s:0};
+                  byTime[p.t].l += p.l||0;
+                  byTime[p.t].s += p.s||0;
+                }
               }
+              return Object.entries(byTime).map(([t,v])=>({t:+t,...v})).sort((a,b)=>a.t-b.t);
             }
-            const fundChart = Object.entries(fundByTime)
-              .map(([t,vals])=>({t:+t,v:vals.reduce((a,b)=>a+b,0)/vals.length}))
-              .sort((a,b)=>a.t-b.t);
-            console.log(`avgFunding: ${avgFunding}, chart points: ${fundChart.length}`);
+            function aggregateVol(data) {
+              const byTime = {};
+              for (const sym of (data||[])) {
+                for (const p of (sym.history||[])) {
+                  byTime[p.t] = (byTime[p.t]||0) + (p.v||0)*(p.c||0);
+                }
+              }
+              return Object.entries(byTime).map(([t,v])=>({t:+t,v})).sort((a,b)=>a.t-b.t);
+            }
+            function aggregateFund(data) {
+              const byTime = {};
+              for (const sym of (data||[])) {
+                for (const p of (sym.history||[])) {
+                  if (!byTime[p.t]) byTime[p.t] = [];
+                  byTime[p.t].push(p.o);
+                }
+              }
+              return Object.entries(byTime)
+                .map(([t,vals])=>({t:+t,v:vals.reduce((a,b)=>a+b,0)/vals.length}))
+                .sort((a,b)=>a.t-b.t);
+            }
 
-            // Step 7: Write final result to Redis
-            console.log('\n=== Writing to Redis ===');
+            const totalOI = (oiCurrent||[]).reduce((s,x)=>s+(x.value||0),0);
+            const avgFunding = (fundingCurrent||[]).length
+              ? (fundingCurrent||[]).reduce((s,f)=>s+(f.last_funding_rate||0),0)/(fundingCurrent||[]).length : 0;
+
+            const oiChart24h = aggregateOI(oiH24);
+            const liqChart24h = aggregateLiq(liqH24);
+            const volChart24h = aggregateVol(volH24);
+            const fundChart24h = aggregateFund(fundH24);
+
+            const totalLiqs24h = liqChart24h.reduce((s,p)=>s+p.l+p.s,0);
+            const totalVol24h = volChart24h.reduce((s,p)=>s+p.v,0);
+            const oiChange24h = oiChart24h.length>=2
+              ? ((oiChart24h[oiChart24h.length-1].v - oiChart24h[0].v)/oiChart24h[0].v)*100 : 0;
+
             const result = {
-              totalOI, oiChange24h, oiChart,
-              totalLiqs, totalLongLiqs, totalShortLiqs, liqChart,
-              totalVolume,
-              avgFunding, fundChart,
+              // Snapshots
+              totalOI, oiChange24h, avgFunding,
+              totalLiqs24h,
+              totalLongLiqs24h: liqChart24h.reduce((s,p)=>s+p.l,0),
+              totalShortLiqs24h: liqChart24h.reduce((s,p)=>s+p.s,0),
+              totalVol24h,
+              // Charts by timeframe
+              oiCharts: {
+                '24h': oiChart24h,
+                '7d': aggregateOI(oiH7d),
+                '30d': aggregateOI(oiH30d),
+                '90d': aggregateOI(oiH90d),
+                '1y': aggregateOI(oiH1y),
+              },
+              liqCharts: {
+                '24h': liqChart24h,
+                '7d': aggregateLiq(liqH7d),
+                '30d': aggregateLiq(liqH30d),
+                '90d': aggregateLiq(liqH90d),
+                '1y': aggregateLiq(liqH1y),
+              },
+              volCharts: {
+                '24h': volChart24h,
+                '7d': aggregateVol(volH7d),
+                '30d': aggregateVol(volH30d),
+                '90d': aggregateVol(volH90d),
+                '1y': aggregateVol(volH1y),
+              },
+              fundChart: fundChart24h,
               updatedAt: Date.now(),
             };
+
+            console.log('totalOI:', result.totalOI);
+            console.log('totalLiqs24h:', result.totalLiqs24h);
+            console.log('totalVol24h:', result.totalVol24h);
+            console.log('avgFunding:', result.avgFunding);
+
             await writeRedis('coinalyze:data', result, 86400);
-            console.log('\n=== Done! ===');
+            console.log('Done!');
           }
 
           main().catch(e => { console.error('Fatal:', e); process.exit(1); });
