@@ -17,12 +17,12 @@ export default function ETFCard({ data, loading }: Props) {
   const chart = (assetData?.last30Days || [])
   .map(row => {
     const computedTotal = Object.values(row.flows || {})
-      .reduce((sum, v) => sum + (v !== null && v !== undefined ? (v as number) : 0), 0);
+      .reduce((sum, v) => (sum as number) + (v !== null && v !== undefined ? (v as number) : 0), 0) as number;
     return { date: formatDateStr(row.date), total: computedTotal };
   })
   .filter(row => row.total > 0);
   const totalLatest = latest
-  ? Object.values(latest.flows || {}).reduce((sum, v) => sum + (v !== null && v !== undefined ? (v as number) : 0), 0)
+  ? : Object.values(latest.flows || {}).reduce((sum, v) => (sum as number) + (v !== null && v !== undefined ? (v as number) : 0), 0) as number
   : 0;
   const latestColor = totalLatest > 0 ? 'var(--green)' : totalLatest < 0 ? 'var(--red)' : 'var(--text-muted)';
   const topETFs = Object.entries(assetData?.byETF || {})
