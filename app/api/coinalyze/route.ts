@@ -6,16 +6,6 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
 });
 
-function extractCharts(chartsByAsset: any, tf: string) {
-  if (!chartsByAsset) return {};
-  const assets = ['total', 'BTC', 'ETH', 'SOL', 'XRP'];
-  const result: Record<string, any[]> = {};
-  for (const asset of assets) {
-    result[asset] = chartsByAsset[asset]?.[tf] || [];
-  }
-  return result;
-}
-
 export async function GET() {
   try {
     const cached = await redis.get('coinalyze:data');
@@ -37,6 +27,7 @@ export async function GET() {
       fundingRate: {
         current: currentFunding,
         annualized: currentFunding * 3 * 365,
+        byAsset: raw.fundingByAsset || { ALL: currentFunding, BTC: 0, ETH: 0, SOL: 0, XRP: 0 },
         chartsByAsset: raw.fundCharts || {},
       },
       liquidations: {
