@@ -14,7 +14,13 @@ export default function ETFCard({ data, loading }: Props) {
 
   const assetData = data ? data[activeAsset.toLowerCase() as 'btc' | 'eth' | 'sol' | 'hype'] : null;
   const latest = assetData?.latest;
-  const chart = (assetData?.last30Days || []).map(row => ({ date: formatDateStr(row.date), total: row.total }));
+  const chart = (assetData?.last30Days || [])
+  .map(row => {
+    const computedTotal = Object.values(row.flows || {})
+      .reduce((sum, v) => sum + (v !== null && v !== undefined ? (v as number) : 0), 0);
+    return { date: formatDateStr(row.date), total: computedTotal };
+  })
+  .filter(row => row.total > 0);
   const totalLatest = latest?.total || 0;
   const latestColor = totalLatest > 0 ? 'var(--green)' : totalLatest < 0 ? 'var(--red)' : 'var(--text-muted)';
   const topETFs = Object.entries(assetData?.byETF || {})
