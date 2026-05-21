@@ -144,6 +144,8 @@ jobs:
             const liqH7d = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
             await sleep(2000);
             const volH7d = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}`);
+            await sleep(2000);
+            const fundH7d = await fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}`);
             await sleep(3000);
 
             // ── 30D (daily) ───────────────────────────────────────────────
@@ -153,6 +155,8 @@ jobs:
             const liqH30d = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
             await sleep(2000);
             const volH30d = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}`);
+            await sleep(2000);
+            const fundH30d = await fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}`);
             await sleep(3000);
 
             // ── 90D (daily) ───────────────────────────────────────────────
@@ -162,6 +166,8 @@ jobs:
             const liqH90d = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
             await sleep(2000);
             const volH90d = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}`);
+            await sleep(2000);
+            const fundH90d = await fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}`);
             await sleep(3000);
 
             // ── 1Y (daily) ────────────────────────────────────────────────
@@ -172,6 +178,8 @@ jobs:
             await sleep(2000);
             const volH1y = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}`);
             await sleep(2000);
+            const fundH1y = await fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}`);
+            await sleep(2000);
 
             // ── Aggregate ─────────────────────────────────────────────────
             console.log('=== Aggregating ===');
@@ -179,9 +187,9 @@ jobs:
             const avgFunding = (fundingCurrent||[]).length
               ? (fundingCurrent||[]).reduce((s,f)=>s+(f.last_funding_rate||0),0)/(fundingCurrent||[]).length : 0;
 
-            const oiChart24h  = aggregateOI(oiH24);
-            const liqChart24h = aggregateLiq(liqH24);
-            const volChart24h = aggregateVol(volH24);
+            const oiChart24h   = aggregateOI(oiH24);
+            const liqChart24h  = aggregateLiq(liqH24);
+            const volChart24h  = aggregateVol(volH24);
             const fundChart24h = aggregateFund(fundH24);
 
             const totalLiqs24h      = liqChart24h.reduce((s,p)=>s+p.l+p.s,0);
@@ -221,7 +229,13 @@ jobs:
                 '90d': aggregateVol(volH90d),
                 '1y':  aggregateVol(volH1y),
               },
-              fundChart: fundChart24h,
+              fundCharts: {
+                '24h': fundChart24h,
+                '7d':  aggregateFund(fundH7d),
+                '30d': aggregateFund(fundH30d),
+                '90d': aggregateFund(fundH90d),
+                '1y':  aggregateFund(fundH1y),
+              },
               updatedAt: Date.now(),
             };
 
