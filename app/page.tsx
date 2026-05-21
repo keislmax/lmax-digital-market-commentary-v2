@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
 import Image from 'next/image';
 import { timeAgo, formatUSD } from '@/lib/utils';
@@ -15,6 +15,21 @@ const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 type Asset = typeof ASSETS[number];
 
 const EXCHANGES = 'Binance · Bybit · OKX · Deribit · BitMEX · Kraken';
+
+function fmtUSD(v: number) {
+  const abs = Math.abs(v);
+  if (abs >= 1e9) return '$' + (v/1e9).toFixed(2) + 'B';
+  if (abs >= 1e6) return '$' + (v/1e6).toFixed(1) + 'M';
+  if (abs >= 1e3) return '$' + (v/1e3).toFixed(1) + 'K';
+  return '$' + v.toFixed(2);
+}
+
+function fmtTime(ts: number) {
+  return new Date(ts * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+function fmtDate(ts: number) {
+  return new Date(ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
 
 function Badge({ value }: { value?: number }) {
   if (value === undefined || value === null) return null;
@@ -105,7 +120,7 @@ function Sparkline({ data, color = '#2563eb', height = 80, labels, formatValue }
 
 const CARD_TITLE_STYLE: React.CSSProperties = {
   fontSize: 10, fontWeight: 700, letterSpacing: '.06em',
-  textTransform: 'uppercase' as const, color: '#1a1917',
+  textTransform: 'uppercase', color: '#1a1917',
 };
 
 function MetricCard({ label, value, sub, change, source, valueColor, children }: {
@@ -234,13 +249,6 @@ function GlobalMetricsCard({ globalMarketCap, btcDominance }: { globalMarketCap?
   );
 }
 
-function fmtTime(ts: number) {
-  return new Date(ts * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-function fmtDate(ts: number) {
-  return new Date(ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' });
-}
-
 export default function Dashboard() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -284,10 +292,8 @@ export default function Dashboard() {
   const fundingColor = !c?.fundingRate?.current ? 'var(--text)'
     : c.fundingRate.current > 0 ? 'var(--green)' : 'var(--red)';
 
-  // Build timestamp labels for charts
-  const buildLabels = (charts: any, tf: string, isHourly: boolean) => {
-    return (charts?.[tf] || []).map((p: any) => isHourly ? fmtTime(p.t) : fmtDate(p.t));
-  };
+  const buildLabels = (charts: any, tf: string, isHourly: boolean) =>
+    (charts?.[tf] || []).map((p: any) => isHourly ? fmtTime(p.t) : fmtDate(p.t));
 
   const oiChartLabels: Record<string, string[]> = {
     '24h': buildLabels(c?.openInterest?.charts, '24h', true),
@@ -348,13 +354,11 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Row 1: Spot Price + Global Market */}
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
           <SpotPriceCard prices={prices} />
           <GlobalMetricsCard globalMarketCap={globalMarketCap} btcDominance={btcDominance} />
         </div>
 
-        {/* Row 2: KPI strip */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 12 }}>
           <MetricCard
             label="Open Interest" value={loading ? '—' : formatUSD(c?.openInterest?.current || 0)}
@@ -377,7 +381,6 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Row 3: OI + Liquidations charts */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <ChartCard
             label="Open Interest" source="Coinalyze"
@@ -386,7 +389,7 @@ export default function Dashboard() {
             charts={c?.openInterest?.charts}
             chartLabels={oiChartLabels}
             color="#2563eb"
-            formatValue={v => formatUSD(v, 1)}
+            formatValue={fmtUSD}
           />
           <ChartCard
             label="Liquidations" source="Coinalyze"
@@ -395,11 +398,10 @@ export default function Dashboard() {
             charts={c?.liquidations?.charts}
             chartLabels={liqChartLabels}
             color="#dc2626"
-            formatValue={v => formatUSD(v, 1)}
+            formatValue={fmtUSD}
           />
         </div>
 
-        {/* Row 4: Volume + Funding charts */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <ChartCard
             label="Volume" source="Coinalyze"
@@ -407,7 +409,7 @@ export default function Dashboard() {
             charts={c?.volume?.charts}
             chartLabels={volChartLabels}
             color="#16a34a"
-            formatValue={v => formatUSD(v, 1)}
+            formatValue={fmtUSD}
           />
           <div className="card" style={{ padding: '14px 16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -429,7 +431,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Row 5: Fear & Greed, Options, ETF */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
           <FearGreedCard data={fg} loading={loading} />
           <OptionsCard data={d} loading={loading} />
