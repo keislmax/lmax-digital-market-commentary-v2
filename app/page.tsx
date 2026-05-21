@@ -23,14 +23,12 @@ const SYMBOLS = [
   'XRPUSDT_PERP.A','XRPUSDT_PERP.3','XRPUSDT_PERP.6',
 ].join(',');
 
-const API_KEY = process.env.NEXT_PUBLIC_COINALYZE_API_KEY || '';
-
 function nowSec() { return Math.floor(Date.now() / 1000); }
 function ago(s: number) { return nowSec() - s; }
 
 async function fetchCoinalyze(endpoint: string, extra = '') {
   const res = await fetch(
-    `https://api.coinalyze.net/v1/${endpoint}?symbols=${SYMBOLS}&${extra}&api_key=${API_KEY}`
+    `/api/coinalyze?endpoint=${endpoint}&symbols=${encodeURIComponent(SYMBOLS)}&extra=${encodeURIComponent(extra)}`
   );
   if (!res.ok) throw new Error(`${endpoint} failed: ${res.status}`);
   return res.json();
