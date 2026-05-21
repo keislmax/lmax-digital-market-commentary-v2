@@ -77,7 +77,7 @@ function ChartCard({ label, source, value, sub, change, charts, valueColor, colo
 }) {
   const [tf, setTf] = useState<TF>('24h');
   const chartData = charts?.[tf] || [];
-  const values = chartData.map((p: any) => p.v ?? (p.l + p.s) ?? 0);
+  const values = chartData.map((p: any) => p.v !== undefined ? p.v : (p.l || 0) + (p.s || 0));
   const chartColor = color || valueColor || '#2563eb';
 
   return (
