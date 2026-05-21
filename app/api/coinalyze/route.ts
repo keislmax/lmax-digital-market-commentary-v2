@@ -6,6 +6,16 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
 });
 
+function extractCharts(chartsByAsset: any, tf: string) {
+  if (!chartsByAsset) return {};
+  const assets = ['total', 'BTC', 'ETH', 'SOL', 'XRP'];
+  const result: Record<string, any[]> = {};
+  for (const asset of assets) {
+    result[asset] = chartsByAsset[asset]?.[tf] || [];
+  }
+  return result;
+}
+
 export async function GET() {
   try {
     const cached = await redis.get('coinalyze:data');
@@ -13,7 +23,7 @@ export async function GET() {
     const raw: any = typeof cached === 'string' ? JSON.parse(cached) : cached;
 
     const fundCharts = raw.fundCharts || {};
-    const fundChart24h = fundCharts['24h'] || raw.fundChart || [];
+    const fundChart24h = fundCharts?.total?.['24h'] || raw.fundChart || [];
     const currentFunding = raw.avgFunding ||
       (fundChart24h.length ? fundChart24h[fundChart24h.length - 1].v : 0);
 
@@ -22,28 +32,22 @@ export async function GET() {
       openInterest: {
         current: raw.totalOI || 0,
         change24h: raw.oiChange24h || 0,
-        charts: raw.oiCharts || {},
+        chartsByAsset: raw.oiCharts || {},
       },
       fundingRate: {
         current: currentFunding,
         annualized: currentFunding * 3 * 365,
-        charts: {
-          '24h': fundChart24h,
-          '7d':  fundCharts['7d']  || [],
-          '30d': fundCharts['30d'] || [],
-          '90d': fundCharts['90d'] || [],
-          '1y':  fundCharts['1y']  || [],
-        },
+        chartsByAsset: raw.fundCharts || {},
       },
       liquidations: {
         total24h: raw.totalLiqs24h || 0,
         longs24h: raw.totalLongLiqs24h || 0,
         shorts24h: raw.totalShortLiqs24h || 0,
-        charts: raw.liqCharts || {},
+        chartsByAsset: raw.liqCharts || {},
       },
       volume: {
         total24h: raw.totalVol24h || 0,
-        charts: raw.volCharts || {},
+        chartsByAsset: raw.volCharts || {},
       },
       updatedAt: raw.updatedAt || 0,
     });
