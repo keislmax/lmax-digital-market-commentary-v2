@@ -32,10 +32,14 @@ export async function GET() {
       });
     }
 
+    const globalData = global?.data || {};
+
     return NextResponse.json({
       prices,
-      globalMarketCap: global?.data?.total_market_cap?.usd || 0,
-      btcDominance: global?.data?.market_cap_percentage?.btc || 0,
+      globalMarketCap: globalData.total_market_cap?.usd || 0,
+      globalVolume24h: globalData.total_volume?.usd || 0,
+      btcDominance: globalData.market_cap_percentage?.btc || 0,
+      ethDominance: globalData.market_cap_percentage?.eth || 0,
       updatedAt: Date.now(),
     });
   } catch (err: any) {
