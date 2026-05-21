@@ -1,37 +1,20 @@
 import { NextResponse } from 'next/server';
+import { Redis } from '@upstash/redis';
 
-async function safeFetch(url: string, init?: RequestInit) {
-  try {
-    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(10000), cache: 'no-store' });
-    if (!res.ok) return { error: res.status };
-    return res.json();
-  } catch (e: any) {
-    return { error: e.message };
-  }
-}
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
 
 export async function GET() {
-  const [binanceOI, binancePrice, bybitTickers, gateContract, hlMeta] = await Promise.all([
-    safeFetch('https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT'),
-    safeFetch('https://fapi.binance.com/fapi/v1/ticker/price?symbol=BTCUSDT'),
-    safeFetch('https://api.bybit.com/v5/market/tickers?category=linear&symbol=BTCUSDT'),
-    safeFetch('https://api.gateio.ws/api/v4/futures/usdt/contracts/BTC_USDT'),
-    safeFetch('https://api.hyperliquid.xyz/info', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'metaAndAssetCtxs' }),
-    }),
-  ]);
-
-  return NextResponse.json({
-    binanceOI,
-    binancePrice,
-    bybitTickers,
-    gateContract,
-    hlMetaSample: Array.isArray(hlMeta) ? {
-      universeCount: hlMeta[0]?.universe?.length,
-      firstAsset: hlMeta[0]?.universe?.[0],
-      firstCtx: hlMeta[1]?.[0],
-    } : hlMeta,
-  });
+  try {
+    const cached = await redis.get('coinalyze:data');
+    if (cached) {
+      const data = typeof cached === 'string' ? JSON.parse(cached) : cached;
+      return NextResponse.json(data);
+    }
+    return NextResponse.json({ error: 'cache_empty' }, { status: 503 });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
 }
