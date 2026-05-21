@@ -223,7 +223,7 @@ function FundingRateKPI({ byAsset, loading }: { byAsset?: Record<string, number>
       </div>
       <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: rateColor, lineHeight: 1.1, marginBottom: 4 }}>{pct}</div>
       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-        {rate > 0 ? 'Longs paying shorts · Current 8H rate' : rate < 0 ? 'Shorts paying longs · Current 8H rate' : 'Current 8H rate · avg across exchanges'}
+        {'Current 8H rate · avg across exchanges'}
       </div>
     </div>
   );
