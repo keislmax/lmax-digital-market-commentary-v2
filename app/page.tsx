@@ -33,9 +33,12 @@ function Badge({ value }: { value?: number }) {
   );
 }
 
-// Simple inline sparkline using SVG
 function Sparkline({ data, color = '#2563eb', height = 80 }: { data: number[], color?: string, height?: number }) {
-  if (!data || data.length < 2) return <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>No data</div>;
+  if (!data || data.length < 2) return (
+    <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+      No data
+    </div>
+  );
   const min = Math.min(...data), max = Math.max(...data);
   const range = max - min || 1;
   const w = 400, h = height;
@@ -57,7 +60,7 @@ function MetricCard({ label, value, sub, change, source, valueColor, children }:
         <div className="card-title">{label}</div>
         {source && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{source}</div>}
       </div>
-      <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1.1, marginBottom: 4 }}>{value}</div>
+      <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: valueColor || 'var(--text)', lineHeight: 1.1, marginBottom: 4 }}>{value}</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minHeight: 18 }}>
         {change !== undefined && <Badge value={change} />}
         {sub && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{sub}</span>}
@@ -67,15 +70,15 @@ function MetricCard({ label, value, sub, change, source, valueColor, children }:
   );
 }
 
-function ChartCard({ label, source, value, sub, change, charts, valueColor, formatY }: {
+function ChartCard({ label, source, value, sub, change, charts, valueColor, color, formatY }: {
   label: string; source?: string; value: string; sub?: string; change?: number;
-  charts?: Record<string, any[]>; valueColor?: string;
+  charts?: Record<string, any[]>; valueColor?: string; color?: string;
   formatY?: (v: number) => string;
 }) {
   const [tf, setTf] = useState<TF>('24h');
   const chartData = charts?.[tf] || [];
-  const values = chartData.map((p: any) => p.v || (p.l + p.s) || 0);
-  const color = valueColor || '#2563eb';
+  const values = chartData.map((p: any) => p.v ?? (p.l + p.s) ?? 0);
+  const chartColor = color || valueColor || '#2563eb';
 
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
@@ -102,7 +105,7 @@ function ChartCard({ label, source, value, sub, change, charts, valueColor, form
           ))}
         </div>
       </div>
-      <Sparkline data={values} color={color} height={80} />
+      <Sparkline data={values} color={chartColor} height={80} />
       <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 6, letterSpacing: '0.02em' }}>{EXCHANGES}</div>
     </div>
   );
