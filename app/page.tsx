@@ -297,26 +297,32 @@ export default function Dashboard() {
 
   const oiChartLabels: Record<string, string[]> = {
     '24h': buildLabels(c?.openInterest?.charts, '24h', true),
-    '7d': buildLabels(c?.openInterest?.charts, '7d', false),
+    '7d':  buildLabels(c?.openInterest?.charts, '7d', false),
     '30d': buildLabels(c?.openInterest?.charts, '30d', false),
     '90d': buildLabels(c?.openInterest?.charts, '90d', false),
-    '1y': buildLabels(c?.openInterest?.charts, '1y', false),
+    '1y':  buildLabels(c?.openInterest?.charts, '1y', false),
   };
   const liqChartLabels: Record<string, string[]> = {
     '24h': buildLabels(c?.liquidations?.charts, '24h', true),
-    '7d': buildLabels(c?.liquidations?.charts, '7d', false),
+    '7d':  buildLabels(c?.liquidations?.charts, '7d', false),
     '30d': buildLabels(c?.liquidations?.charts, '30d', false),
     '90d': buildLabels(c?.liquidations?.charts, '90d', false),
-    '1y': buildLabels(c?.liquidations?.charts, '1y', false),
+    '1y':  buildLabels(c?.liquidations?.charts, '1y', false),
   };
   const volChartLabels: Record<string, string[]> = {
     '24h': buildLabels(c?.volume?.charts, '24h', true),
-    '7d': buildLabels(c?.volume?.charts, '7d', false),
+    '7d':  buildLabels(c?.volume?.charts, '7d', false),
     '30d': buildLabels(c?.volume?.charts, '30d', false),
     '90d': buildLabels(c?.volume?.charts, '90d', false),
-    '1y': buildLabels(c?.volume?.charts, '1y', false),
+    '1y':  buildLabels(c?.volume?.charts, '1y', false),
   };
-  const fundLabels = (c?.fundingRate?.chart || []).map((p: any) => fmtTime(p.t));
+  const fundChartLabels: Record<string, string[]> = {
+    '24h': buildLabels(c?.fundingRate?.charts, '24h', true),
+    '7d':  buildLabels(c?.fundingRate?.charts, '7d', false),
+    '30d': buildLabels(c?.fundingRate?.charts, '30d', false),
+    '90d': buildLabels(c?.fundingRate?.charts, '90d', false),
+    '1y':  buildLabels(c?.fundingRate?.charts, '1y', false),
+  };
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
@@ -375,7 +381,7 @@ export default function Dashboard() {
             source="Coinalyze"
           />
           <MetricCard
-            label="Funding Rate (8H)" value={loading ? '—' : fundingPct}
+            label="Funding Rate" value={loading ? '—' : fundingPct}
             sub="BTC avg · per 8-hour settlement" source="Coinalyze"
             valueColor={fundingColor}
           />
@@ -411,24 +417,16 @@ export default function Dashboard() {
             color="#16a34a"
             formatValue={fmtUSD}
           />
-          <div className="card" style={{ padding: '14px 16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <div style={CARD_TITLE_STYLE}>Funding Rate (24H)</div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Coinalyze</div>
-            </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: fundingColor, marginBottom: 4 }}>{fundingPct}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
-              {c?.fundingRate?.current > 0 ? 'Longs paying shorts' : c?.fundingRate?.current < 0 ? 'Shorts paying longs' : 'BTC avg across exchanges'}
-            </div>
-            <Sparkline
-              data={(c?.fundingRate?.chart || []).map((p: any) => p.v)}
-              color={fundingColor || '#2563eb'}
-              height={80}
-              labels={fundLabels}
-              formatValue={v => (v * 100).toFixed(4) + '%'}
-            />
-            <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 6 }}>{EXCHANGES}</div>
-          </div>
+          <ChartCard
+            label="Funding Rate" source="Coinalyze"
+            value={loading ? '—' : fundingPct}
+            sub={c?.fundingRate?.current > 0 ? 'Longs paying shorts' : c?.fundingRate?.current < 0 ? 'Shorts paying longs' : 'BTC avg across exchanges'}
+            charts={c?.fundingRate?.charts}
+            chartLabels={fundChartLabels}
+            valueColor={fundingColor}
+            color={fundingColor === 'var(--text)' ? '#6b6860' : fundingColor}
+            formatValue={v => (v * 100).toFixed(4) + '%'}
+          />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
