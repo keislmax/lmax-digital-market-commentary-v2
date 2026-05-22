@@ -31,12 +31,12 @@ export default function ETFCard({ data, loading }: Props) {
 
   const assetData = data ? data[activeAsset.toLowerCase() as 'btc' | 'eth' | 'sol' | 'hype'] : null;
   const latest = assetData?.latest;
-  const totalLatest = computeTotal(latest?.flows);
+  const totalLatest = latest?.total ?? 0;
   const latestColor = totalLatest > 0 ? 'var(--green)' : totalLatest < 0 ? 'var(--red)' : 'var(--text-muted)';
 
   const chart = (assetData?.last30Days || [])
-    .map(row => ({ date: formatDateStr(row.date), total: computeTotal(row.flows) }))
-    .filter(row => row.total !== 0);
+  .map(row => ({ date: formatDateStr(row.date), total: row.total }))
+  .filter(row => row.total !== 0);
 
   const topETFs = Object.entries(assetData?.byETF || {})
     .filter(([, v]) => v !== null && v !== undefined && v !== 0)
