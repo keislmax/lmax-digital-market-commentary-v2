@@ -21,11 +21,6 @@ function fmtFlow(val: number): string {
   return sign + '$' + abs.toFixed(1) + 'M';
 }
 
-function computeTotal(flows: Record<string, number | null> | undefined): number {
-  if (!flows) return 0;
-  return Object.values(flows).reduce((sum, v) => (sum as number) + (v !== null && v !== undefined ? (v as number) : 0), 0) as number;
-}
-
 export default function ETFCard({ data, loading }: Props) {
   const [activeAsset, setActiveAsset] = useState<Asset>('BTC');
 
@@ -35,13 +30,12 @@ export default function ETFCard({ data, loading }: Props) {
   const latestColor = totalLatest > 0 ? 'var(--green)' : totalLatest < 0 ? 'var(--red)' : 'var(--text-muted)';
 
   const chart = (assetData?.last30Days || [])
-  .map(row => ({ date: formatDateStr(row.date), total: row.total }))
-  .filter(row => row.total !== 0);
+    .map(row => ({ date: formatDateStr(row.date), total: row.total }))
+    .filter(row => row.total !== 0);
 
   const topETFs = Object.entries(assetData?.byETF || {})
     .filter(([, v]) => v !== null && v !== undefined && v !== 0)
-    .sort((a, b) => Math.abs(b[1] as number) - Math.abs(a[1] as number))
-    .slice(0, 20);
+    .sort((a, b) => Math.abs(b[1] as number) - Math.abs(a[1] as number));
 
   return (
     <div className="card" style={{ padding: '20px' }}>
@@ -50,8 +44,8 @@ export default function ETFCard({ data, loading }: Props) {
         <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Farside Investors</div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 120, overflowY: 'auto' }}>
-  {topETFs.map(([name, val]) => (
+      <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
+        {ASSETS.map(asset => (
           <button key={asset} onClick={() => setActiveAsset(asset)} style={{
             padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600,
             border: '1px solid',
@@ -111,7 +105,7 @@ export default function ETFCard({ data, loading }: Props) {
           {topETFs.length > 0 && (
             <div>
               <div style={{ ...CARD_TITLE, marginBottom: 8 }}>30-day flows by product (US$M)</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 140, overflowY: 'auto' }}>
                 {topETFs.map(([name, val]) => (
                   <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
                     <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{name}</span>
