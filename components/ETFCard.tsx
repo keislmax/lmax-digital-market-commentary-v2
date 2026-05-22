@@ -41,7 +41,7 @@ export default function ETFCard({ data, loading }: Props) {
   const topETFs = Object.entries(assetData?.byETF || {})
     .filter(([, v]) => v !== null && v !== undefined && v !== 0)
     .sort((a, b) => Math.abs(b[1] as number) - Math.abs(a[1] as number))
-    .slice(0, 5);
+    .slice(0, 20);
 
   return (
     <div className="card" style={{ padding: '20px' }}>
@@ -50,8 +50,8 @@ export default function ETFCard({ data, loading }: Props) {
         <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Farside Investors</div>
       </div>
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
-        {ASSETS.map(asset => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 120, overflowY: 'auto' }}>
+  {topETFs.map(([name, val]) => (
           <button key={asset} onClick={() => setActiveAsset(asset)} style={{
             padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600,
             border: '1px solid',
