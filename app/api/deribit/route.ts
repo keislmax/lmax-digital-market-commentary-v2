@@ -55,10 +55,10 @@ async function calcSkew(currency: string): Promise<number | null> {
       ...samplePuts.map((i: any)  => fetchDeribit('get_order_book', { instrument_name: i.instrument_name, depth: '1' })),
     ]);
 
-    const callIVs = results.slice(0, sampleCalls.length).map((r: any) => r.mark_iv || 0).filter(Boolean);
-    const putIVs  = results.slice(sampleCalls.length).map((r: any) => r.mark_iv || 0).filter(Boolean);
+    const callIVs = results.slice(0, sampleCalls.length).map((r: any) => r.mark_iv).filter((v: any) => v && v > 0);
+    const putIVs  = results.slice(sampleCalls.length).map((r: any) => r.mark_iv).filter((v: any) => v && v > 0);
     if (!callIVs.length || !putIVs.length) return null;
-
+    
     const avgCallIV = callIVs.reduce((a: number, b: number) => a + b, 0) / callIVs.length;
     const avgPutIV  = putIVs.reduce((a: number, b: number) => a + b, 0) / putIVs.length;
     return avgPutIV - avgCallIV;
@@ -88,10 +88,10 @@ export async function GET() {
         chartsByAsset: { BTC: btcCharts, ETH: ethCharts },
       },
       skew: {
-        value25d: btcSkew,
+        value25d: btcSkew === 0 ? null : btcSkew,
         interpretation: interpSkew(btcSkew),
         BTC: { value25d: btcSkew, interpretation: interpSkew(btcSkew) },
-        ETH: { value25d: ethSkew, interpretation: interpSkew(ethSkew) },
+        ETH: { value25d: ethSkew === 0 ? null : ethSkew, interpretation: interpSkew(ethSkew === 0 ? null : ethSkew) },
       },
       updatedAt: Date.now(),
     });
