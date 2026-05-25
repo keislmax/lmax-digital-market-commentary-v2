@@ -126,8 +126,9 @@ jobs:
             for (const sym of (data||[])) {
               const asset = getAsset(sym.symbol||'');
               for (const p of (sym.history||[])) {
-                byTime.total[p.t] = (byTime.total[p.t]||0) + (p.v||0);
-                if (asset) byTime[asset][p.t] = (byTime[asset][p.t]||0) + (p.v||0);
+                const usdVol = (p.v||0) * (p.c||1);
+                byTime.total[p.t] = (byTime.total[p.t]||0) + usdVol;
+                if (asset) byTime[asset][p.t] = (byTime[asset][p.t]||0) + usdVol;
               }
             }
             const toArr = obj => Object.entries(obj).map(([t,v])=>({t:+t,v})).sort((a,b)=>a.t-b.t);
@@ -191,7 +192,7 @@ jobs:
             await sleep(2000);
             const liqH24 = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
             await sleep(2000);
-            const volH24 = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+            const volH24 = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}`);
             await sleep(3000);
 
             console.log('=== Fetching 7D data ===');
@@ -199,7 +200,7 @@ jobs:
             await sleep(2000);
             const liqH7d  = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
             await sleep(2000);
-            const volH7d  = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
+            const volH7d  = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}`);
             await sleep(2000);
             const fundH7d = await fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}`);
             await sleep(3000);
@@ -209,7 +210,7 @@ jobs:
             await sleep(2000);
             const liqH30d  = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
             await sleep(2000);
-            const volH30d  = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
+            const volH30d  = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}`);
             await sleep(2000);
             const fundH30d = await fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}`);
             await sleep(3000);
@@ -219,7 +220,7 @@ jobs:
             await sleep(2000);
             const liqH90d  = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
             await sleep(2000);
-            const volH90d  = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
+            const volH90d  = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}`);
             await sleep(2000);
             const fundH90d = await fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}`);
             await sleep(3000);
@@ -229,7 +230,7 @@ jobs:
             await sleep(2000);
             const liqH1y  = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
             await sleep(2000);
-            const volH1y  = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
+            const volH1y  = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}`);
             await sleep(2000);
             const fundH1y = await fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}`);
             await sleep(2000);
@@ -257,7 +258,7 @@ jobs:
             const totalLiqs24h      = liqTotal24h.reduce((s,p)=>s+p.l+p.s,0);
             const totalLongLiqs24h  = liqTotal24h.reduce((s,p)=>s+p.l,0);
             const totalShortLiqs24h = liqTotal24h.reduce((s,p)=>s+p.s,0);
-            const totalVol24h       = volTotal24h.reduce((s,p)=>s+p.v,0);
+            const totalVol24h       = volTotal24h.length ? volTotal24h[volTotal24h.length - 1].v : 0;
             const oiChange24h = totalChart24h.length>=2
               ? ((totalChart24h[totalChart24h.length-1].v - totalChart24h[0].v)/totalChart24h[0].v)*100 : 0;
 
