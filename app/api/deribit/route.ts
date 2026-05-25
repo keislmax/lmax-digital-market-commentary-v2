@@ -32,40 +32,45 @@ async function fetchDvolCharts(currency: string) {
 
 async function calcSkew(currency: string): Promise<number | null> {
   try {
-    const result = await fetchDeribit('get_index_price_names', {});
+    const now = Date.now();
+    const sevenDays  = now + 7  * 86400000;
+    const thirtyDays = now + 30 * 86400000;
+
+    const MONTHS: Record<string, number> = {
+      JAN:0,FEB:1,MAR:2,APR:3,MAY:4,JUN:5,
+      JUL:6,AUG:7,SEP:8,OCT:9,NOV:10,DEC:11,
+    };
+
+    // Deribit expiry format: '27JUN25' → Date.UTC(2025, 5, 27, 8, 0, 0)
+    function parseDeribitExp(name: string): number {
+      const p = name.split('-')[1];          // e.g. '27JUN25'
+      const day = parseInt(p.slice(0, 2));
+      const mon = MONTHS[p.slice(2, 5)];
+      const yr  = 2000 + parseInt(p.slice(5, 7));
+      return Date.UTC(yr, mon, day, 8, 0, 0); // Deribit settles at 08:00 UTC
+    }
+
     const summary = await fetchDeribit('get_book_summary_by_currency', {
       currency,
       kind: 'option',
     });
     if (!summary?.length) return null;
 
-    const now = Date.now();
-    const sevenDays = now + 7 * 86400000;
-    const thirtyDays = now + 30 * 86400000;
+    const relevant = summary.filter((s: any) => {
+      if (!s.instrument_name || !(s.mark_iv > 0)) return false;
+      const exp = parseDeribitExp(s.instrument_name);
+      return exp > sevenDays && exp < thirtyDays;
+    });
 
-    const relevant = summary.filter((s: any) =>
-      s.instrument_name &&
-      s.mark_iv > 0 &&
-      s.underlying_price > 0
-    );
-
-    const calls = relevant.filter((s: any) => s.instrument_name.endsWith('-C'))
-      .filter((s: any) => {
-        const exp = new Date(s.instrument_name.split('-')[1] + ' UTC').getTime();
-        return exp > sevenDays && exp < thirtyDays;
-      });
-    const puts = relevant.filter((s: any) => s.instrument_name.endsWith('-P'))
-      .filter((s: any) => {
-        const exp = new Date(s.instrument_name.split('-')[1] + ' UTC').getTime();
-        return exp > sevenDays && exp < thirtyDays;
-      });
+    const calls = relevant.filter((s: any) => s.instrument_name.endsWith('-C'));
+    const puts  = relevant.filter((s: any) => s.instrument_name.endsWith('-P'));
 
     if (!calls.length || !puts.length) return null;
 
-    const avgCallIV = calls.reduce((s: number, c: any) => s + c.mark_iv, 0) / calls.length;
-    const avgPutIV = puts.reduce((s: number, p: any) => s + p.mark_iv, 0) / puts.length;
-    const skew = avgPutIV - avgCallIV;
+    const avg = (arr: any[], key: string) =>
+      arr.reduce((sum: number, x: any) => sum + x[key], 0) / arr.length;
 
+    const skew = avg(puts, 'mark_iv') - avg(calls, 'mark_iv');
     return Math.abs(skew) < 0.01 ? null : skew;
   } catch {
     return null;
