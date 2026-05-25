@@ -36,14 +36,12 @@ async function calcSkew(currency: string): Promise<number | null> {
     const sevenDays  = now + 7  * 86400000;
     const thirtyDays = now + 30 * 86400000;
 
-    // 1. Get current spot price to estimate 25Δ strikes
     const idx = await fetchDeribit('get_index_price', {
       index_name: `${currency.toLowerCase()}_usd`,
     });
     const spot: number = idx?.index_price ?? 0;
     if (!spot) return null;
 
-    // 2. Get all active options
     const instruments: any[] = await fetchDeribit('get_instruments', {
       currency,
       kind: 'option',
@@ -51,23 +49,20 @@ async function calcSkew(currency: string): Promise<number | null> {
     });
     if (!Array.isArray(instruments) || !instruments.length) return null;
 
-    // 3. Find nearest expiry in the 7–30 day window
     const inWindow = instruments.filter(i =>
       i.expiration_timestamp > sevenDays && i.expiration_timestamp < thirtyDays
     );
     if (!inWindow.length) return null;
 
     const nearestExpiry = Math.min(...inWindow.map(i => i.expiration_timestamp));
-    const T = (nearestExpiry - now) / (365 * 86400000); // years to expiry
+    const T = (nearestExpiry - now) / (365 * 86400000);
 
-    // 4. Estimate 25Δ strikes via Black-Scholes approximation (σ ≈ 60%)
     const σ = 0.60;
     const callTarget = spot * Math.exp( 0.674 * σ * Math.sqrt(T));
     const putTarget  = spot * Math.exp(-0.674 * σ * Math.sqrt(T));
 
     const atExpiry = inWindow.filter(i => i.expiration_timestamp === nearestExpiry);
 
-    // 5. Pick the 3 strikes closest to each 25Δ target
     const callCands = atExpiry
       .filter(i => i.option_type === 'call')
       .sort((a, b) => Math.abs(a.strike - callTarget) - Math.abs(b.strike - callTarget))
@@ -80,7 +75,6 @@ async function calcSkew(currency: string): Promise<number | null> {
 
     if (!callCands.length || !putCands.length) return null;
 
-    // 6. Fetch tickers for those 6 specific instruments
     const tickers = await Promise.all(
       [...callCands, ...putCands].map(i =>
         fetchDeribit('ticker', { instrument_name: i.instrument_name })
@@ -134,12 +128,10 @@ export async function GET() {
         BTC: { value25d: btcSkew, interpretation: interpSkew(btcSkew) },
         ETH: { value25d: ethSkew === 0 ? null : ethSkew, interpretation: interpSkew(ethSkew === 0 ? null : ethSkew) },
       },
+      skewDebug: { btc: btcSkew, eth: ethSkew },
       updatedAt: Date.now(),
     });
   } catch (err: any) {
-    return NextResponse.json({
-  dvol: { ... },
-  skew: { ... },
-  updatedAt: Date.now(),
-  skewDebug: { btc: btcSkew, eth: ethSkew },   // ← add this
-});
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
