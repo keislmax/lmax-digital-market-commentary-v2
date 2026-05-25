@@ -31,37 +31,42 @@ async function fetchDvolCharts(currency: string) {
 }
 
 async function calcSkew(currency: string): Promise<number | null> {
-  const now = Date.now();
   try {
-    const instruments = await fetchDeribit('get_instruments', { currency, kind: 'option', expired: 'false' });
-    const nearExpiries = [...new Set(
-      instruments
-        .filter((i: any) => i.expiration_timestamp > now + 7*86400000 && i.expiration_timestamp < now + 30*86400000)
-        .map((i: any) => i.expiration_timestamp)
-    )].sort((a: any, b: any) => a - b);
+    const result = await fetchDeribit('get_index_price_names', {});
+    const summary = await fetchDeribit('get_book_summary_by_currency', {
+      currency,
+      kind: 'option',
+    });
+    if (!summary?.length) return null;
 
-    if (!nearExpiries.length) return null;
-    const targetExpiry = nearExpiries[0] as number;
-    const calls = instruments.filter((i: any) => i.expiration_timestamp === targetExpiry && i.option_type === 'call').sort((a: any, b: any) => a.strike - b.strike);
-    const puts  = instruments.filter((i: any) => i.expiration_timestamp === targetExpiry && i.option_type === 'put').sort((a: any, b: any) => a.strike - b.strike);
-    if (calls.length < 3 || puts.length < 3) return null;
+    const now = Date.now();
+    const sevenDays = now + 7 * 86400000;
+    const thirtyDays = now + 30 * 86400000;
 
-    const mid = Math.floor(calls.length / 2);
-    const sampleCalls = [calls[mid-1], calls[mid], calls[mid+1]].filter(Boolean);
-    const samplePuts  = [puts[mid-1],  puts[mid],  puts[mid+1]].filter(Boolean);
+    const relevant = summary.filter((s: any) =>
+      s.instrument_name &&
+      s.mark_iv > 0 &&
+      s.underlying_price > 0
+    );
 
-    const results = await Promise.all([
-      ...sampleCalls.map((i: any) => fetchDeribit('get_order_book', { instrument_name: i.instrument_name, depth: '1' })),
-      ...samplePuts.map((i: any)  => fetchDeribit('get_order_book', { instrument_name: i.instrument_name, depth: '1' })),
-    ]);
+    const calls = relevant.filter((s: any) => s.instrument_name.endsWith('-C'))
+      .filter((s: any) => {
+        const exp = new Date(s.instrument_name.split('-')[1] + ' UTC').getTime();
+        return exp > sevenDays && exp < thirtyDays;
+      });
+    const puts = relevant.filter((s: any) => s.instrument_name.endsWith('-P'))
+      .filter((s: any) => {
+        const exp = new Date(s.instrument_name.split('-')[1] + ' UTC').getTime();
+        return exp > sevenDays && exp < thirtyDays;
+      });
 
-    const callIVs = results.slice(0, sampleCalls.length).map((r: any) => r.mark_iv).filter((v: any) => v && v > 0);
-    const putIVs  = results.slice(sampleCalls.length).map((r: any) => r.mark_iv).filter((v: any) => v && v > 0);
-    if (!callIVs.length || !putIVs.length) return null;
-    
-    const avgCallIV = callIVs.reduce((a: number, b: number) => a + b, 0) / callIVs.length;
-    const avgPutIV  = putIVs.reduce((a: number, b: number) => a + b, 0) / putIVs.length;
-    return avgPutIV - avgCallIV;
+    if (!calls.length || !puts.length) return null;
+
+    const avgCallIV = calls.reduce((s: number, c: any) => s + c.mark_iv, 0) / calls.length;
+    const avgPutIV = puts.reduce((s: number, p: any) => s + p.mark_iv, 0) / puts.length;
+    const skew = avgPutIV - avgCallIV;
+
+    return Math.abs(skew) < 0.01 ? null : skew;
   } catch {
     return null;
   }
