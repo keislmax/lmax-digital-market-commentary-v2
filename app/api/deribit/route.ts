@@ -36,43 +36,74 @@ async function calcSkew(currency: string): Promise<number | null> {
     const sevenDays  = now + 7  * 86400000;
     const thirtyDays = now + 30 * 86400000;
 
-    const MONTHS: Record<string, number> = {
-      JAN:0,FEB:1,MAR:2,APR:3,MAY:4,JUN:5,
-      JUL:6,AUG:7,SEP:8,OCT:9,NOV:10,DEC:11,
-    };
+    // 1. Get current spot price to estimate 25Δ strikes
+    const idx = await fetchDeribit('get_index_price', {
+      index_name: `${currency.toLowerCase()}_usd`,
+    });
+    const spot: number = idx?.index_price ?? 0;
+    if (!spot) return null;
 
-    // Deribit expiry format: '27JUN25' → Date.UTC(2025, 5, 27, 8, 0, 0)
-    function parseDeribitExp(name: string): number {
-      const p = name.split('-')[1];          // e.g. '27JUN25'
-      const day = parseInt(p.slice(0, 2));
-      const mon = MONTHS[p.slice(2, 5)];
-      const yr  = 2000 + parseInt(p.slice(5, 7));
-      return Date.UTC(yr, mon, day, 8, 0, 0); // Deribit settles at 08:00 UTC
-    }
-
-    const summary = await fetchDeribit('get_book_summary_by_currency', {
+    // 2. Get all active options
+    const instruments: any[] = await fetchDeribit('get_instruments', {
       currency,
       kind: 'option',
+      expired: 'false',
     });
-    if (!summary?.length) return null;
+    if (!Array.isArray(instruments) || !instruments.length) return null;
 
-    const relevant = summary.filter((s: any) => {
-      if (!s.instrument_name || !(s.mark_iv > 0)) return false;
-      const exp = parseDeribitExp(s.instrument_name);
-      return exp > sevenDays && exp < thirtyDays;
-    });
+    // 3. Find nearest expiry in the 7–30 day window
+    const inWindow = instruments.filter(i =>
+      i.expiration_timestamp > sevenDays && i.expiration_timestamp < thirtyDays
+    );
+    if (!inWindow.length) return null;
 
-    const calls = relevant.filter((s: any) => s.instrument_name.endsWith('-C'));
-    const puts  = relevant.filter((s: any) => s.instrument_name.endsWith('-P'));
+    const nearestExpiry = Math.min(...inWindow.map(i => i.expiration_timestamp));
+    const T = (nearestExpiry - now) / (365 * 86400000); // years to expiry
 
-    if (!calls.length || !puts.length) return null;
+    // 4. Estimate 25Δ strikes via Black-Scholes approximation (σ ≈ 60%)
+    const σ = 0.60;
+    const callTarget = spot * Math.exp( 0.674 * σ * Math.sqrt(T));
+    const putTarget  = spot * Math.exp(-0.674 * σ * Math.sqrt(T));
 
-    const avg = (arr: any[], key: string) =>
-      arr.reduce((sum: number, x: any) => sum + x[key], 0) / arr.length;
+    const atExpiry = inWindow.filter(i => i.expiration_timestamp === nearestExpiry);
 
-    const skew = avg(puts, 'mark_iv') - avg(calls, 'mark_iv');
+    // 5. Pick the 3 strikes closest to each 25Δ target
+    const callCands = atExpiry
+      .filter(i => i.option_type === 'call')
+      .sort((a, b) => Math.abs(a.strike - callTarget) - Math.abs(b.strike - callTarget))
+      .slice(0, 3);
+
+    const putCands = atExpiry
+      .filter(i => i.option_type === 'put')
+      .sort((a, b) => Math.abs(a.strike - putTarget) - Math.abs(b.strike - putTarget))
+      .slice(0, 3);
+
+    if (!callCands.length || !putCands.length) return null;
+
+    // 6. Fetch tickers for those 6 specific instruments
+    const tickers = await Promise.all(
+      [...callCands, ...putCands].map(i =>
+        fetchDeribit('ticker', { instrument_name: i.instrument_name })
+      )
+    );
+
+    const callIVs = tickers
+      .slice(0, callCands.length)
+      .map((t: any) => t?.mark_iv as number)
+      .filter(v => typeof v === 'number' && v > 0);
+
+    const putIVs = tickers
+      .slice(callCands.length)
+      .map((t: any) => t?.mark_iv as number)
+      .filter(v => typeof v === 'number' && v > 0);
+
+    if (!callIVs.length || !putIVs.length) return null;
+
+    const avg = (a: number[]) => a.reduce((s, v) => s + v, 0) / a.length;
+    const skew = avg(putIVs) - avg(callIVs);
     return Math.abs(skew) < 0.01 ? null : skew;
-  } catch {
+  } catch (e) {
+    console.error('[calcSkew error]', currency, e);
     return null;
   }
 }
@@ -106,6 +137,9 @@ export async function GET() {
       updatedAt: Date.now(),
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
-}
+    return NextResponse.json({
+  dvol: { ... },
+  skew: { ... },
+  updatedAt: Date.now(),
+  skewDebug: { btc: btcSkew, eth: ethSkew },   // ← add this
+});
