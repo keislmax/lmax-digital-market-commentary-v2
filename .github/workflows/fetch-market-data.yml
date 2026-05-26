@@ -133,6 +133,7 @@ jobs:
               const asset = getAsset(sym.symbol||'');
               for (const p of (sym.history||[])) {
                 const usdVol = (p.v||0) * (p.c||1);
+                if (sym.symbol === 'BTCUSDT_PERP.A' && p.v > 0) console.log('BTCUSDT_PERP.A sample:', sym.symbol, 'v:', p.v, 'c:', p.c, 'usdVol:', usdVol);
                 byTime.total[p.t] = (byTime.total[p.t]||0) + usdVol;
                 if (asset) byTime[asset][p.t] = (byTime[asset][p.t]||0) + usdVol;
               }
