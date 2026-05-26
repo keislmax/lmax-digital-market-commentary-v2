@@ -270,20 +270,19 @@ function SpotPriceCard({ prices }: { prices: any }) {
   );
 }
 
-function GlobalMetricsCard({ pricesData, derivativesVol }: { pricesData: any; derivativesVol?: number }) {
+function GlobalMetricsCard({ pricesData }: { pricesData: any }) {
   if (!pricesData?.globalMarketCap) return null;
   const rows = [
     { label: 'Total Market Cap', value: formatUSD(pricesData.globalMarketCap), source: 'CoinGecko' },
     { label: '24H Market Volume', value: formatUSD(pricesData.globalVolume24h), source: 'CoinGecko' },
     { label: 'BTC Dominance', value: pricesData.btcDominance?.toFixed(1) + '%', source: 'CoinGecko' },
     { label: 'ETH Dominance', value: pricesData.ethDominance?.toFixed(1) + '%', source: 'CoinGecko' },
-    { label: 'Derivatives Vol (BTC/ETH/SOL/XRP)', value: derivativesVol ? formatUSD(derivativesVol) : '—', source: 'Coinalyze' },
   ];
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
         <div style={CARD_TITLE_STYLE}>Global Market</div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>CoinGecko · Coinalyze</div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>CoinGecko</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
         {rows.map(({ label, value, source }) => (
@@ -393,7 +392,7 @@ export default function Dashboard() {
         {/* Row 1: Spot Price + Global Market */}
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
           <SpotPriceCard prices={prices} />
-          <GlobalMetricsCard pricesData={pricesData} derivativesVol={c?.volume?.total24h} />
+          <GlobalMetricsCard pricesData={pricesData} />
         </div>
 
         {/* Row 2: KPI strip */}
@@ -479,17 +478,7 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Row 5: Derivatives Volume chart */}
-        <div style={{ marginBottom: 12 }}>
-          <ChartCard
-            label="Derivatives Volume — BTC/ETH/SOL/XRP" source="Coinalyze"
-            snapshotValue={loading ? '—' : formatUSD(c?.volume?.total24h || 0)}
-            chartsByAsset={c?.volume?.chartsByAsset}
-            color="#16a34a" formatValue={fmtUSD}
-          />
-        </div>
-
-        {/* Row 6: Fear & Greed, Options, ETF */}
+        {/* Row 5: Fear & Greed, Options, ETF */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
           <FearGreedCard data={fg} loading={loading} />
           <OptionsCard data={d} loading={loading} />
