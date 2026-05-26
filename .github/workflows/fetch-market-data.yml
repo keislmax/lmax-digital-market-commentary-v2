@@ -67,13 +67,6 @@ jobs:
             console.log(`Redis ${key}:`, JSON.stringify(r));
           }
 
-          const SYMBOLS = [
-            'BTCUSDT_PERP.A','BTCUSD_PERP.0','BTCUSDT_PERP.3','BTC-PERPETUAL.2','BTCUSDT_PERP.4','BTCPERP.6',
-            'ETHUSDT_PERP.A','ETHUSD_PERP.0','ETHUSDT_PERP.3','ETH-PERPETUAL.2','ETHUSDT_PERP.4','ETHPERP.6',
-            'SOLUSDT_PERP.A','SOLUSDT_PERP.3','SOLUSDT_PERP.4','SOLPERP.6',
-            'XRPUSDT_PERP.A','XRPUSDT_PERP.3','XRPUSDT_PERP.4','XRPPERP.6',
-          ].join(',');
-
           const ASSET_SYMBOLS = {
             BTC: ['BTCUSDT_PERP.A','BTCUSD_PERP.0','BTCUSDT_PERP.3','BTC-PERPETUAL.2','BTCUSDT_PERP.4','BTCPERP.6'],
             ETH: ['ETHUSDT_PERP.A','ETHUSD_PERP.0','ETHUSDT_PERP.3','ETH-PERPETUAL.2','ETHUSDT_PERP.4','ETHPERP.6'],
@@ -81,12 +74,26 @@ jobs:
             XRP: ['XRPUSDT_PERP.A','XRPUSDT_PERP.3','XRPUSDT_PERP.4','XRPPERP.6'],
           };
 
+          const ALL_SYMBOLS = Object.values(ASSET_SYMBOLS).flat().join(',');
+
           function getAsset(symbol) {
             if (symbol.startsWith('BTC')) return 'BTC';
             if (symbol.startsWith('ETH')) return 'ETH';
             if (symbol.startsWith('SOL')) return 'SOL';
             if (symbol.startsWith('XRP')) return 'XRP';
             return null;
+          }
+
+          // Fetch per-asset and merge results into one array
+          async function fetchByAsset(pathFn, sleepMs=3000) {
+            const results = [];
+            for (const [asset, syms] of Object.entries(ASSET_SYMBOLS)) {
+              console.log(`  Fetching ${asset}...`);
+              const data = await fetchCoinalyze(pathFn(syms.join(',')));
+              if (data) results.push(...data);
+              await sleep(sleepMs);
+            }
+            return results;
           }
 
           function aggregateOI(data) {
@@ -180,59 +187,41 @@ jobs:
             const from1y  = ago(365*86400);
             const to = nowSec();
 
-            console.log('=== Fetching 24H data ===');
-            const oiCurrent = await fetchCoinalyze(`/open-interest?symbols=${SYMBOLS}&convert_to_usd=true`);
+            console.log('=== Fetching current snapshots ===');
+            const oiCurrent      = await fetchCoinalyze(`/open-interest?symbols=${ALL_SYMBOLS}&convert_to_usd=true`);
             await sleep(4000);
-            const fundingCurrent = await fetchCoinalyze(`/funding-rate?symbols=${SYMBOLS}`);
+            const fundingCurrent = await fetchCoinalyze(`/funding-rate?symbols=${ALL_SYMBOLS}`);
             await sleep(4000);
-            const oiH24 = await fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
-            await sleep(4000);
-            const fundH24 = await fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}`);
-            await sleep(4000);
-            const liqH24 = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
-            await sleep(4000);
-            const volH24 = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
-            await sleep(8000);
 
-            console.log('=== Fetching 7D data ===');
-            const oiH7d   = await fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
-            await sleep(4000);
-            const liqH7d  = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
-            await sleep(4000);
-            const volH7d  = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
-            await sleep(4000);
-            const fundH7d = await fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=daily&from=${from7d}&to=${to}`);
-            await sleep(8000);
+            console.log('=== Fetching 24H data (per asset) ===');
+            const oiH24   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+            const liqH24  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+            const volH24  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+            const fundH24 = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}`);
 
-            console.log('=== Fetching 30D data ===');
-            const oiH30d   = await fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
-            await sleep(4000);
-            const liqH30d  = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
-            await sleep(4000);
-            const volH30d  = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
-            await sleep(4000);
-            const fundH30d = await fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=daily&from=${from30d}&to=${to}`);
-            await sleep(8000);
+            console.log('=== Fetching 7D data (per asset) ===');
+            const oiH7d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
+            const liqH7d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
+            const volH7d  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
+            const fundH7d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}`);
 
-            console.log('=== Fetching 90D data ===');
-            const oiH90d   = await fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
-            await sleep(4000);
-            const liqH90d  = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
-            await sleep(4000);
-            const volH90d  = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
-            await sleep(4000);
-            const fundH90d = await fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=daily&from=${from90d}&to=${to}`);
-            await sleep(8000);
+            console.log('=== Fetching 30D data (per asset) ===');
+            const oiH30d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
+            const liqH30d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
+            const volH30d  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
+            const fundH30d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}`);
 
-            console.log('=== Fetching 1Y data ===');
-            const oiH1y   = await fetchCoinalyze(`/open-interest-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
-            await sleep(4000);
-            const liqH1y  = await fetchCoinalyze(`/liquidation-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
-            await sleep(4000);
-            const volH1y  = await fetchCoinalyze(`/ohlcv-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
-            await sleep(4000);
-            const fundH1y = await fetchCoinalyze(`/funding-rate-history?symbols=${SYMBOLS}&interval=daily&from=${from1y}&to=${to}`);
-            await sleep(4000);
+            console.log('=== Fetching 90D data (per asset) ===');
+            const oiH90d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
+            const liqH90d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
+            const volH90d  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
+            const fundH90d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}`);
+
+            console.log('=== Fetching 1Y data (per asset) ===');
+            const oiH1y   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
+            const liqH1y  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
+            const volH1y  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
+            const fundH1y = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}`);
 
             console.log('=== Aggregating ===');
             const totalOI = (oiCurrent||[]).reduce((s,x)=>s+(x.value||0),0);
