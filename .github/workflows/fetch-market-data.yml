@@ -8,7 +8,7 @@ on:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Fetch and cache market data
         env:
@@ -84,8 +84,7 @@ jobs:
             return null;
           }
 
-          // Fetch per-asset and merge results into one array
-          async function fetchByAsset(pathFn, sleepMs=3000) {
+          async function fetchByAsset(pathFn, sleepMs=8000) {
             const results = [];
             for (const [asset, syms] of Object.entries(ASSET_SYMBOLS)) {
               console.log(`  Fetching ${asset}...`);
@@ -133,8 +132,9 @@ jobs:
             for (const sym of (data||[])) {
               const asset = getAsset(sym.symbol||'');
               for (const p of (sym.history||[])) {
-                byTime.total[p.t] = (byTime.total[p.t]||0) + (p.v||0);
-                if (asset) byTime[asset][p.t] = (byTime[asset][p.t]||0) + (p.v||0);
+                const usdVol = (p.v||0) * (p.c||1);
+                byTime.total[p.t] = (byTime.total[p.t]||0) + usdVol;
+                if (asset) byTime[asset][p.t] = (byTime[asset][p.t]||0) + usdVol;
               }
             }
             const toArr = obj => Object.entries(obj).map(([t,v])=>({t:+t,v})).sort((a,b)=>a.t-b.t);
@@ -196,31 +196,31 @@ jobs:
             console.log('=== Fetching 24H data (per asset) ===');
             const oiH24   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
             const liqH24  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
-            const volH24  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+            const volH24  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from24h}&to=${to}`);
             const fundH24 = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}`);
 
             console.log('=== Fetching 7D data (per asset) ===');
             const oiH7d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
             const liqH7d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
-            const volH7d  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
+            const volH7d  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}`);
             const fundH7d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}`);
 
             console.log('=== Fetching 30D data (per asset) ===');
             const oiH30d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
             const liqH30d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
-            const volH30d  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
+            const volH30d  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}`);
             const fundH30d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}`);
 
             console.log('=== Fetching 90D data (per asset) ===');
             const oiH90d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
             const liqH90d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
-            const volH90d  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
+            const volH90d  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}`);
             const fundH90d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}`);
 
             console.log('=== Fetching 1Y data (per asset) ===');
             const oiH1y   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
             const liqH1y  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
-            const volH1y  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
+            const volH1y  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}`);
             const fundH1y = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}`);
 
             console.log('=== Aggregating ===');
@@ -246,7 +246,7 @@ jobs:
             const totalLiqs24h      = liqTotal24h.reduce((s,p)=>s+p.l+p.s,0);
             const totalLongLiqs24h  = liqTotal24h.reduce((s,p)=>s+p.l,0);
             const totalShortLiqs24h = liqTotal24h.reduce((s,p)=>s+p.s,0);
-            const totalVol24h       = volTotal24h.reduce((s,p)=>s+p.v,0);
+            const totalVol24h       = volTotal24h.length ? volTotal24h[volTotal24h.length - 1].v : 0;
             const oiChange24h = totalChart24h.length>=2
               ? ((totalChart24h[totalChart24h.length-1].v - totalChart24h[0].v)/totalChart24h[0].v)*100 : 0;
 
