@@ -177,7 +177,7 @@ jobs:
             console.log('=== Fetching current snapshots ===');
             const oiCurrent      = await fetchCoinalyze(`/open-interest?symbols=${ALL_SYMBOLS}&convert_to_usd=true`);
             await sleep(4000);
-            const fundingCurrent = await fetchCoinalyze(`/funding-rate?symbols=${ALL_SYMBOLS}`);
+            const fundingCurrent = await fetchByAsset(s => `/funding-rate?symbols=${s}`);
             await sleep(4000);
 
             console.log('=== Fetching 24H data (per asset) ===');
@@ -208,13 +208,13 @@ jobs:
             console.log('=== Aggregating ===');
             const totalOI = (oiCurrent||[]).reduce((s,x)=>s+(x.value||0),0);
             const avgFunding = (fundingCurrent||[]).length
-              ? (fundingCurrent||[]).reduce((s,f)=>s+(f.last_funding_rate||0),0)/(fundingCurrent||[]).length : 0;
+              ? (fundingCurrent||[]).reduce((s,f)=>s+(f.value||0),0)/(fundingCurrent||[]).length : 0;
 
             const fundingByAsset = { ALL: avgFunding };
             for (const [asset, syms] of Object.entries(ASSET_SYMBOLS)) {
               const rates = (fundingCurrent||[]).filter(f => syms.includes(f.symbol));
               fundingByAsset[asset] = rates.length
-                ? rates.reduce((s,f)=>s+(f.last_funding_rate||0),0)/rates.length : 0;
+                ? rates.reduce((s,f)=>s+(f.value||0),0)/rates.length : 0;
             }
 
             const oiCharts   = buildCharts(oiH24,   oiH7d,   oiH30d,   oiH90d,   oiH1y,   aggregateOI);
