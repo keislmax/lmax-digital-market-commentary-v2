@@ -86,7 +86,7 @@ jobs:
 
           async function fetchByAsset(pathFn, sleepMs=8000) {
             const results = [];
-            await sleep(4000); // breathing room before first call
+            await sleep(4000);
             for (const [asset, syms] of Object.entries(ASSET_SYMBOLS)) {
               console.log(`  Fetching ${asset}...`);
               const data = await fetchCoinalyze(pathFn(syms.join(',')));
@@ -125,20 +125,6 @@ jobs:
               }
             }
             const toArr = obj => Object.entries(obj).map(([t,v])=>({t:+t,...v})).sort((a,b)=>a.t-b.t);
-            return { total: toArr(byTime.total), BTC: toArr(byTime.BTC), ETH: toArr(byTime.ETH), SOL: toArr(byTime.SOL), XRP: toArr(byTime.XRP) };
-          }
-
-          function aggregateVol(data) {
-            const byTime = {total:{}, BTC:{}, ETH:{}, SOL:{}, XRP:{}};
-            for (const sym of (data||[])) {
-              const asset = getAsset(sym.symbol||'');
-              for (const p of (sym.history||[])) {
-                const usdVol = (p.v||0) * (p.c||1);
-                byTime.total[p.t] = (byTime.total[p.t]||0) + usdVol;
-                if (asset) byTime[asset][p.t] = (byTime[asset][p.t]||0) + usdVol;
-              }
-            }
-            const toArr = obj => Object.entries(obj).map(([t,v])=>({t:+t,v})).sort((a,b)=>a.t-b.t);
             return { total: toArr(byTime.total), BTC: toArr(byTime.BTC), ETH: toArr(byTime.ETH), SOL: toArr(byTime.SOL), XRP: toArr(byTime.XRP) };
           }
 
@@ -194,38 +180,29 @@ jobs:
             const fundingCurrent = await fetchCoinalyze(`/funding-rate?symbols=${ALL_SYMBOLS}`);
             await sleep(4000);
 
-            console.log('=== Fetching 24H volume snapshot (last 2 daily candles) ===');
-            const volSnapshot = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from24h}&to=${to}`);
-            await sleep(4000);
-
             console.log('=== Fetching 24H data (per asset) ===');
             const oiH24   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
             const liqH24  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
-            const volH24  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}`);
             const fundH24 = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}`);
 
             console.log('=== Fetching 7D data (per asset) ===');
             const oiH7d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
             const liqH7d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
-            const volH7d  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}`);
             const fundH7d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}`);
 
             console.log('=== Fetching 30D data (per asset) ===');
             const oiH30d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
             const liqH30d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
-            const volH30d  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}`);
             const fundH30d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}`);
 
             console.log('=== Fetching 90D data (per asset) ===');
             const oiH90d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
             const liqH90d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
-            const volH90d  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}`);
             const fundH90d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}`);
 
             console.log('=== Fetching 1Y data (per asset) ===');
             const oiH1y   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
             const liqH1y  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
-            const volH1y  = await fetchByAsset(s => `/ohlcv-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}`);
             const fundH1y = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}`);
 
             console.log('=== Aggregating ===');
@@ -242,7 +219,6 @@ jobs:
 
             const oiCharts   = buildCharts(oiH24,   oiH7d,   oiH30d,   oiH90d,   oiH1y,   aggregateOI);
             const liqCharts  = buildCharts(liqH24,  liqH7d,  liqH30d,  liqH90d,  liqH1y,  aggregateLiq);
-            const volCharts  = buildCharts(volH24,  volH7d,  volH30d,  volH90d,  volH1y,  aggregateVol);
             const fundCharts = buildCharts(fundH24, fundH7d, fundH30d, fundH90d, fundH1y, aggregateFund);
 
             const totalChart24h     = oiCharts.total['24h'];
@@ -253,25 +229,16 @@ jobs:
             const oiChange24h = totalChart24h.length>=2
               ? ((totalChart24h[totalChart24h.length-1].v - totalChart24h[0].v)/totalChart24h[0].v)*100 : 0;
 
-            // 24H volume: last 2 daily candles per symbol to cover rolling 24H window
-            const totalVol24h = (volSnapshot||[]).reduce((sum, sym) => {
-              const history = sym.history||[];
-              if (!history.length) return sum;
-              const recent = history.slice(-2);
-              return sum + recent.reduce((s, p) => s + (p.v||0) * (p.c||1), 0);
-            }, 0);
-
             console.log('totalOI:', totalOI);
             console.log('totalLiqs24h:', totalLiqs24h);
-            console.log('totalVol24h:', totalVol24h);
             console.log('avgFunding:', avgFunding);
             console.log('fundingByAsset:', JSON.stringify(fundingByAsset));
 
             const result = {
               totalOI, oiChange24h, avgFunding, fundingByAsset,
               totalLiqs24h, totalLongLiqs24h, totalShortLiqs24h,
-              totalVol24h,
-              oiCharts, liqCharts, volCharts, fundCharts,
+              totalVol24h: null,
+              oiCharts, liqCharts, fundCharts,
               updatedAt: Date.now(),
             };
 
