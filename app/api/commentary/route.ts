@@ -115,13 +115,38 @@ export async function POST() {
 
     const userPrompt = buildUserPrompt(allData);
 
-    // List available models first to debug
-    const modelsRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models?key=${process.env.GEMINI_API_KEY}`
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: SYSTEM_PROMPT + '\n\n' + userPrompt }],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 1024,
+          },
+        }),
+      }
     );
-    const modelsList = await modelsRes.json();
-    throw new Error('Models: ' + JSON.stringify(modelsList?.models?.map((m: any) => m.name)));
 
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Gemini API error: ${response.status} ${err}`);
+    }
+
+    const result = await response.json();
+    const commentary = result?.candidates?.[0]?.content?.parts?.[0]?.text ?? 'Commentary unavailable.';
+
+    return NextResponse.json({
+      commentary,
+      generatedAt: Date.now(),
+    });
   } catch (err: any) {
     console.error('[commentary error]', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
