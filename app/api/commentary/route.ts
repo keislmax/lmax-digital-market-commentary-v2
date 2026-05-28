@@ -65,9 +65,13 @@ function buildUserPrompt(data: any): string {
   const btcEtf = etf?.btc?.latest ?? 'N/A';
   const ethEtf = etf?.eth?.latest ?? 'N/A';
 
-  return `Here is today's live market data. Use this as your factual foundation, then search the web for today's news, macro events, and notable market chatter before writing the briefing.
+  const today = new Date().toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-LIVE MARKET DATA (as of now):
+  return `Today is ${today}.
+
+Here is the live market data. Use this as your factual foundation, then use your knowledge of recent market events and news to write the briefing.
+
+LIVE MARKET DATA:
 
 Spot prices:
 - BTC: $${btcPrice} (${btcChange}% 24H)
@@ -98,13 +102,7 @@ ETF flows (latest session):
 - BTC ETFs: $${btcEtf}M
 - ETH ETFs: $${ethEtf}M
 
-Now search the web for:
-1. Today's top crypto news and any significant on-chain events
-2. Any macro events moving risk appetite today (equity open, oil, DXY, geopolitical)
-3. Notable commentary from crypto analysts, on-chain trackers, or large players
-4. Any significant liquidation events, whale moves, or large block trades reported today
-
-Then write the briefing.`;
+Now write the briefing. Draw on your knowledge of what has been happening in crypto markets, macro, and geopolitics recently to add context beyond the raw numbers above.`;
 }
 
 export async function POST(request: Request) {
@@ -116,42 +114,36 @@ export async function POST(request: Request) {
 
     const userPrompt = buildUserPrompt(allData);
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'interleaved-thinking-2025-05-14',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 16000,
-        thinking: {
-          type: 'enabled',
-          budget_tokens: 10000,
-        },
-        tools: [
-          {
-            type: 'web_search_20250305',
-            name: 'web_search',
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: {
+            parts: [{ text: SYSTEM_PROMPT }],
           },
-        ],
-        system: SYSTEM_PROMPT,
-        messages: [
-          { role: 'user', content: userPrompt },
-        ],
-      }),
-    });
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: userPrompt }],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 1024,
+          },
+        }),
+      }
+    );
 
     if (!response.ok) {
       const err = await response.text();
-      throw new Error(`Claude API error: ${response.status} ${err}`);
+      throw new Error(`Gemini API error: ${response.status} ${err}`);
     }
 
     const result = await response.json();
-
-    const textBlock = result.content?.find((b: any) => b.type === 'text');
-    const commentary = textBlock?.text ?? 'Commentary unavailable.';
+    const commentary = result?.candidates?.[0]?.content?.parts?.[0]?.text ?? 'Commentary unavailable.';
 
     return NextResponse.json({
       commentary,
