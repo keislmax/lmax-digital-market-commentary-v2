@@ -1,4 +1,10 @@
 import { NextResponse } from 'next/server';
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
 
 const SYSTEM_PROMPT = `You are a senior crypto market analyst writing a daily briefing for professional traders and institutional clients at LMAX Digital, a regulated crypto exchange. Your audience trades size, thinks in risk, and has zero patience for surface-level commentary.
 
@@ -32,9 +38,6 @@ Return plain text only. No headers, no bullet points, no markdown. Just the para
 
 function buildUserPrompt(data: any): string {
   const c = data?.coinalyze;
-  const d = data?.deribit;
-  const fg = data?.feargreed;
-  const etf = data?.etf;
   const prices = data?.prices?.prices;
 
   const btcPrice = prices?.BTC?.price ?? 'N/A';
@@ -52,35 +55,22 @@ function buildUserPrompt(data: any): string {
   const funding = c?.fundingRate?.current ?? 'N/A';
   const fundingByAsset = c?.fundingRate?.byAsset ?? {};
 
-  const dvol = d?.dvol?.current ?? 'N/A';
-  const skew = d?.skew?.BTC?.value25d ?? 'N/A';
-  const skewInterp = d?.skew?.BTC?.interpretation ?? 'N/A';
-  const basis = d?.basis?.basis ?? 'N/A';
-  const basisExpiry = d?.basis?.expiry ?? 'N/A';
-  const basisDays = d?.basis?.daysToExpiry ?? 'N/A';
-
-  const fearGreed = fg?.value ?? 'N/A';
-  const fearGreedLabel = fg?.label ?? 'N/A';
-
-  const btcEtf = etf?.btc?.latest ?? 'N/A';
-  const ethEtf = etf?.eth?.latest ?? 'N/A';
-
   const today = new Date().toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   return `Today is ${today}.
 
-Here is the live market data. Use this as your factual foundation, then use your knowledge of recent market events and news to write the briefing.
+Here is the live market data. Use this as your factual foundation, then draw on your knowledge of recent market events and news to write the briefing.
 
 LIVE MARKET DATA:
 
 Spot prices:
-- BTC: $${btcPrice} (${btcChange}% 24H)
-- ETH: $${ethPrice} (${ethChange}% 24H)
+- BTC: $${btcPrice} (${typeof btcChange === 'number' ? btcChange.toFixed(2) : btcChange}% 24H)
+- ETH: $${ethPrice} (${typeof ethChange === 'number' ? ethChange.toFixed(2) : ethChange}% 24H)
 - SOL: $${solPrice}
 - XRP: $${xrpPrice}
 
 Derivatives:
-- Open Interest: $${typeof oi === 'number' ? (oi/1e9).toFixed(2) + 'B' : oi} (${oiChange}% 24H change)
+- Open Interest: $${typeof oi === 'number' ? (oi/1e9).toFixed(2) + 'B' : oi} (${typeof oiChange === 'number' ? oiChange.toFixed(2) : oiChange}% 24H change)
 - Total Liquidations 24H: $${typeof totalLiqs === 'number' ? (totalLiqs/1e6).toFixed(1) + 'M' : totalLiqs}
   - Longs liquidated: $${typeof longLiqs === 'number' ? (longLiqs/1e6).toFixed(1) + 'M' : longLiqs}
   - Shorts liquidated: $${typeof shortLiqs === 'number' ? (shortLiqs/1e6).toFixed(1) + 'M' : shortLiqs}
@@ -90,30 +80,41 @@ Derivatives:
   - SOL: ${typeof fundingByAsset.SOL === 'number' ? (fundingByAsset.SOL * 100).toFixed(4) + '%' : 'N/A'}
   - XRP: ${typeof fundingByAsset.XRP === 'number' ? (fundingByAsset.XRP * 100).toFixed(4) + '%' : 'N/A'}
 
-Options (Deribit):
-- BTC DVOL (30D implied vol): ${dvol}%
-- 25-delta put/call skew: ${typeof skew === 'number' ? skew.toFixed(1) : skew} (${skewInterp})
-- BTC futures basis: ${basis}% annualised (${basisExpiry}, ${basisDays} days to expiry)
-
-Sentiment:
-- Fear & Greed Index: ${fearGreed} — ${fearGreedLabel}
-
-ETF flows (latest session):
-- BTC ETFs: $${btcEtf}M
-- ETH ETFs: $${ethEtf}M
-
 Now write the briefing. Draw on your knowledge of what has been happening in crypto markets, macro, and geopolitics recently to add context beyond the raw numbers above.`;
 }
 
 export async function POST(request: Request) {
   try {
-    const { origin } = new URL(request.url);
+    const [cached, pricesRes] = await Promise.all([
+      redis.get('coinalyze:data'),
+      fetch(
+        `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,solana,ripple&price_change_percentage=24h&x_cg_demo_api_key=${process.env.COINGECKO_API_KEY}`,
+        { cache: 'no-store' }
+      ).then(r => r.json()),
+    ]);
 
-    const allRes = await fetch(`${origin}/api/all`);
-    const allData = await allRes.json();
+    const raw: any = cached ? (typeof cached === 'string' ? JSON.parse(cached) : cached) : {};
+    const symbols = ['BTC', 'ETH', 'SOL', 'XRP'];
+    const coinIds = ['bitcoin', 'ethereum', 'solana', 'ripple'];
+    const priceMap: Record<string, any> = {};
+    if (Array.isArray(pricesRes)) {
+      pricesRes.forEach((coin: any) => {
+        const idx = coinIds.indexOf(coin.id);
+        if (idx !== -1) priceMap[symbols[idx]] = { price: coin.current_price, change24h: coin.price_change_percentage_24h };
+      });
+    }
+
+    const allData = {
+      coinalyze: {
+        openInterest: { current: raw.totalOI, change24h: raw.oiChange24h },
+        liquidations: { total24h: raw.totalLiqs24h, longs24h: raw.totalLongLiqs24h, shorts24h: raw.totalShortLiqs24h },
+        fundingRate: { current: raw.avgFunding, byAsset: raw.fundingByAsset || {} },
+      },
+      prices: { prices: priceMap },
+    };
 
     const userPrompt = buildUserPrompt(allData);
-    console.log('GEMINI_API_KEY present:', !!process.env.GEMINI_API_KEY);
+
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
