@@ -102,13 +102,56 @@ async function calcSkew(currency: string): Promise<number | null> {
   }
 }
 
+async function calcBasis(currency: string): Promise<{ basis: number | null; expiry: string | null; daysToExpiry: number | null }> {
+  try {
+    const now = Date.now();
+    const thirtyDays = now + 30 * 86400000;
+    const ninetyDays = now + 90 * 86400000;
+
+    const [idx, instruments] = await Promise.all([
+      fetchDeribit('get_index_price', { index_name: `${currency.toLowerCase()}_usd` }),
+      fetchDeribit('get_instruments', { currency, kind: 'future', expired: 'false' }),
+    ]);
+
+    const spot: number = idx?.index_price ?? 0;
+    if (!spot) return { basis: null, expiry: null, daysToExpiry: null };
+
+    const quarterly = (instruments as any[]).filter(i =>
+      i.expiration_timestamp > thirtyDays &&
+      i.expiration_timestamp < ninetyDays &&
+      !i.instrument_name.includes('PERPETUAL')
+    );
+    if (!quarterly.length) return { basis: null, expiry: null, daysToExpiry: null };
+
+    quarterly.sort((a, b) => a.expiration_timestamp - b.expiration_timestamp);
+    const nearest = quarterly[0];
+
+    const ticker = await fetchDeribit('ticker', { instrument_name: nearest.instrument_name });
+    const futurePrice: number = ticker?.mark_price ?? 0;
+    if (!futurePrice) return { basis: null, expiry: null, daysToExpiry: null };
+
+    const daysToExpiry = (nearest.expiration_timestamp - now) / 86400000;
+    const annualisedBasis = ((futurePrice - spot) / spot) * (365 / daysToExpiry) * 100;
+
+    return {
+      basis: Math.round(annualisedBasis * 10) / 10,
+      expiry: nearest.instrument_name,
+      daysToExpiry: Math.round(daysToExpiry),
+    };
+  } catch (e) {
+    console.error('[calcBasis error]', currency, e);
+    return { basis: null, expiry: null, daysToExpiry: null };
+  }
+}
+
 export async function GET() {
   try {
-    const [btcCharts, ethCharts, btcSkew, ethSkew] = await Promise.all([
+    const [btcCharts, ethCharts, btcSkew, ethSkew, btcBasis] = await Promise.all([
       fetchDvolCharts('BTC'),
       fetchDvolCharts('ETH'),
       calcSkew('BTC'),
       calcSkew('ETH'),
+      calcBasis('BTC'),
     ]);
 
     const btcCurrent = btcCharts['24h'].length ? btcCharts['24h'][btcCharts['24h'].length - 1].v : null;
@@ -128,6 +171,7 @@ export async function GET() {
         BTC: { value25d: btcSkew, interpretation: interpSkew(btcSkew) },
         ETH: { value25d: ethSkew === 0 ? null : ethSkew, interpretation: interpSkew(ethSkew === 0 ? null : ethSkew) },
       },
+      basis: btcBasis,
       skewDebug: { btc: btcSkew, eth: ethSkew },
       updatedAt: Date.now(),
     });
