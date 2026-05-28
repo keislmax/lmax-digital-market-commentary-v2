@@ -84,21 +84,21 @@ function calcRegime(data: any): { label: string; color: string; bg: string; bord
   const greedExtreme = fearGreed > 75;
 
   if (longFlush && oiContracting && fearExtreme) {
-    return { label: 'Risk-Off · Deleveraging', color: '#991b1b', bg: '#fee2e2', border: '#fca5a5', detail: 'Long flush underway, OI contracting, fear elevated' };
+    return { label: 'Risk-Off, Deleveraging', color: '#991b1b', bg: '#fee2e2', border: '#fca5a5', detail: 'Long flush underway, OI contracting, fear elevated' };
   }
   if (shortSqueeze && oiFilling && fundingElevated) {
-    return { label: 'Risk-On · Short Squeeze', color: '#166534', bg: '#dcfce7', border: '#86efac', detail: 'Shorts being flushed, OI building, funding positive' };
+    return { label: 'Risk-On, Short Squeeze', color: '#166534', bg: '#dcfce7', border: '#86efac', detail: 'Shorts being flushed, OI building, funding positive' };
   }
   if (bearishSkew && oiContracting) {
-    return { label: 'Cautious · Hedging Active', color: '#854d0e', bg: '#fef9c3', border: '#fde047', detail: 'Options market bid for puts, OI softening' };
+    return { label: 'Cautious, Hedging Active', color: '#854d0e', bg: '#fef9c3', border: '#fde047', detail: 'Options market bid for puts, OI softening' };
   }
   if (fundingNegative && fearExtreme) {
-    return { label: 'Risk-Off · Bearish Bias', color: '#991b1b', bg: '#fee2e2', border: '#fca5a5', detail: 'Funding negative, fear elevated' };
+    return { label: 'Risk-Off, Bearish Bias', color: '#991b1b', bg: '#fee2e2', border: '#fca5a5', detail: 'Funding negative, fear elevated' };
   }
   if (greedExtreme && fundingElevated && oiFilling) {
-    return { label: 'Risk-On · Elevated', color: '#166534', bg: '#dcfce7', border: '#86efac', detail: 'Greed elevated, funding high, OI building — watch for flush' };
+    return { label: 'Risk-On, Elevated', color: '#166534', bg: '#dcfce7', border: '#86efac', detail: 'Greed elevated, funding high, OI building, watch for flush' };
   }
-  return { label: 'Neutral · Wait and See', color: '#374151', bg: '#f3f4f6', border: '#d1d5db', detail: 'No dominant signal across funding, OI and sentiment' };
+  return { label: 'Neutral, Wait and See', color: '#374151', bg: '#f3f4f6', border: '#d1d5db', detail: 'No dominant signal across funding, OI and sentiment' };
 }
 
 function Sparkline({ data, color = '#2563eb', height = 80, labels, formatValue, onHoverChange }: {
@@ -262,11 +262,10 @@ function FundingRateKPI({ byAsset, loading }: { byAsset?: Record<string, number>
   const rateColor = rate > 0 ? 'var(--green)' : rate < 0 ? 'var(--red)' : 'var(--text)';
 
   const getInsight = (r: number): { text: string; type: 'bullish' | 'bearish' | 'warning' | 'neutral' } => {
-    const abs = Math.abs(r * 100);
-    if (r > 0.1) return { text: 'Elevated — longs overextended', type: 'warning' };
-    if (r > 0.05) return { text: 'Positive — longs paying', type: 'neutral' };
-    if (r > 0) return { text: 'Mild — not overextended', type: 'neutral' };
-    if (r < -0.05) return { text: 'Negative — shorts paying', type: 'bullish' };
+    if (r > 0.1) return { text: 'Elevated, longs overextended', type: 'warning' };
+    if (r > 0.05) return { text: 'Positive, longs paying', type: 'neutral' };
+    if (r > 0) return { text: 'Mild, not overextended', type: 'neutral' };
+    if (r < -0.05) return { text: 'Negative, shorts paying', type: 'bullish' };
     return { text: 'Neutral', type: 'neutral' };
   };
   const insight = getInsight(rate);
@@ -370,11 +369,11 @@ function BasisCard({ basis }: { basis: any }) {
   const days = basis?.daysToExpiry;
 
   const getInsight = (b: number): { text: string; type: 'bullish' | 'bearish' | 'warning' | 'neutral' } => {
-    if (b > 15) return { text: 'Elevated — strong institutional demand', type: 'bullish' };
-    if (b > 8) return { text: 'Healthy — institutions bid', type: 'bullish' };
-    if (b > 3) return { text: 'Moderate — neutral positioning', type: 'neutral' };
-    if (b > 0) return { text: 'Compressed — weak demand', type: 'warning' };
-    return { text: 'Backwardation — bearish signal', type: 'bearish' };
+    if (b > 15) return { text: 'Elevated, strong institutional demand', type: 'bullish' };
+    if (b > 8) return { text: 'Healthy, institutions bid', type: 'bullish' };
+    if (b > 3) return { text: 'Moderate, neutral positioning', type: 'neutral' };
+    if (b > 0) return { text: 'Compressed, weak demand', type: 'warning' };
+    return { text: 'Backwardation, bearish signal', type: 'bearish' };
   };
 
   const insight = value !== null && value !== undefined ? getInsight(value) : null;
@@ -524,7 +523,7 @@ function CommentaryCard() {
               padding: '2px 8px', borderRadius: 4,
               background: 'var(--surface2)',
             }}>
-              AI-generated · live data + web search
+              Live data + Web search
             </span>
           </div>
         </>
@@ -590,17 +589,17 @@ export default function Dashboard() {
   const longLiqs = c?.liquidations?.longs24h ?? 0;
   const shortLiqs = c?.liquidations?.shorts24h ?? 0;
   const liqInsight = shortLiqs > longLiqs * 3
-    ? { text: 'Short squeeze — not deleveraging', type: 'bullish' as const }
+    ? { text: 'Short squeeze, not deleveraging', type: 'bullish' as const }
     : longLiqs > shortLiqs * 3
-    ? { text: 'Long flush — deleveraging event', type: 'bearish' as const }
-    : { text: 'Mixed — no dominant direction', type: 'neutral' as const };
+    ? { text: 'Long flush, deleveraging event', type: 'bearish' as const }
+    : { text: 'Mixed, no dominant direction', type: 'neutral' as const };
 
   const oiChange = c?.openInterest?.change24h ?? 0;
   const oiInsight = oiChange > 1
-    ? { text: 'Building — new money entering', type: 'warning' as const }
+    ? { text: 'Building, new money entering', type: 'warning' as const }
     : oiChange < -1
-    ? { text: 'Contracting — de-risking signal', type: 'warning' as const }
-    : { text: 'Stable — no major shift', type: 'neutral' as const };
+    ? { text: 'Contracting, de-risking signal', type: 'warning' as const }
+    : { text: 'Stable, no major shift', type: 'neutral' as const };
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
@@ -638,19 +637,14 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Regime Bar */}
         {data && <RegimeBar data={data} />}
-
-        {/* Commentary */}
         <CommentaryCard />
 
-        {/* Row 1: Spot Price + Global Market */}
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
           <SpotPriceCard prices={prices} />
           <GlobalMetricsCard pricesData={pricesData} />
         </div>
 
-        {/* Row 2: KPI strip */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 12 }}>
           <div className="card" style={{ padding: '14px 16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -697,7 +691,6 @@ export default function Dashboard() {
           <FundingRateKPI byAsset={c?.fundingRate?.byAsset} loading={loading} />
         </div>
 
-        {/* Row 3: OI + Liquidations charts */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <ChartCard
             label="Open Interest" source="Coinalyze"
@@ -715,7 +708,6 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Row 4: Spot Volume + Funding Rate charts */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <ChartCard
             label="Spot Volume — BTC/ETH/SOL/XRP" source="CoinGecko"
@@ -735,7 +727,6 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Row 5: Fear & Greed, Options, ETF + Basis */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
           <FearGreedCard data={fg} loading={loading} />
           <OptionsCard data={d} loading={loading} />
