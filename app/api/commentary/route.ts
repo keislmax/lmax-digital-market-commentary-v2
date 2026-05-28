@@ -115,25 +115,11 @@ export async function POST(request: Request) {
 
     const userPrompt = buildUserPrompt(allData);
 
-    const response = await fetch(
-  `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-  {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: SYSTEM_PROMPT + '\n\n' + userPrompt }],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 1024,
-      },
-    }),
-  }
+    const modelsRes = await fetch(
+  `https://generativelanguage.googleapis.com/v1/models?key=${process.env.GEMINI_API_KEY}`
 );
+const modelsList = await modelsRes.json();
+throw new Error('Models: ' + JSON.stringify(modelsList?.models?.map((m: any) => m.name)));
 
     if (!response.ok) {
       const err = await response.text();
