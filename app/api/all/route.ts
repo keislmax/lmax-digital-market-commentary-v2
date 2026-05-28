@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
-  const { origin } = new URL(request.url);
-
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
+  
   const [coinalyze, deribit, feargreed, etf, prices, spotvolume] = await Promise.allSettled([
     fetch(`${origin}/api/coinalyze`).then(r => r.json()),
     fetch(`${origin}/api/deribit`).then(r => r.json()),
