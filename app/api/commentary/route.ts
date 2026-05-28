@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
+import Anthropic from '@anthropic-ai/sdk';
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL!,
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 const SYSTEM_PROMPT = `You are a senior crypto market analyst writing a daily briefing for professional traders and institutional clients at LMAX Digital, a regulated crypto exchange. Your audience trades size, thinks in risk, and has zero patience for surface-level commentary.
@@ -115,33 +120,16 @@ export async function POST() {
 
     const userPrompt = buildUserPrompt(allData);
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: SYSTEM_PROMPT + '\n\n' + userPrompt }],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 1024,
-          },
-        }),
-      }
-    );
+    const message = await client.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      messages: [
+        { role: 'user', content: userPrompt },
+      ],
+    });
 
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Gemini API error: ${response.status} ${err}`);
-    }
-
-    const result = await response.json();
-    const commentary = result?.candidates?.[0]?.content?.parts?.[0]?.text ?? 'Commentary unavailable.';
+    const commentary = message.content[0].type === 'text' ? message.content[0].text : 'Commentary unavailable.';
 
     return NextResponse.json({
       commentary,
