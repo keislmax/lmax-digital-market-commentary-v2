@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
+import { RefreshCw, AlertCircle, TrendingUp, TrendingDown, Sparkles, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { timeAgo, formatUSD } from '@/lib/utils';
 import FearGreedCard from '@/components/FearGreedCard';
@@ -43,6 +43,62 @@ function Badge({ value }: { value?: number }) {
       {pos ? '+' : ''}{value.toFixed(2)}%
     </span>
   );
+}
+
+function InsightPill({ text, type = 'neutral' }: { text: string; type?: 'bullish' | 'bearish' | 'neutral' | 'warning' }) {
+  const styles: Record<string, React.CSSProperties> = {
+    bullish: { background: '#dcfce7', color: '#166534' },
+    bearish: { background: '#fee2e2', color: '#991b1b' },
+    warning: { background: '#fef9c3', color: '#854d0e' },
+    neutral: { background: 'var(--surface2)', color: 'var(--text-muted)', border: '1px solid var(--border)' },
+  };
+  return (
+    <span style={{
+      fontSize: 11, padding: '2px 8px', borderRadius: 4,
+      display: 'inline-block', marginTop: 5, fontWeight: 500,
+      ...styles[type],
+    }}>{text}</span>
+  );
+}
+
+function calcRegime(data: any): { label: string; color: string; bg: string; border: string; detail: string } {
+  const c = data?.coinalyze;
+  const d = data?.deribit;
+  const fg = data?.feargreed;
+
+  const funding = c?.fundingRate?.current ?? 0;
+  const oiChange = c?.openInterest?.change24h ?? 0;
+  const longLiqs = c?.liquidations?.longs24h ?? 0;
+  const shortLiqs = c?.liquidations?.shorts24h ?? 0;
+  const skew = d?.skew?.BTC?.value25d ?? 0;
+  const fearGreed = fg?.value ?? 50;
+
+  const shortSqueeze = shortLiqs > longLiqs * 3;
+  const longFlush = longLiqs > shortLiqs * 3;
+  const fundingElevated = funding > 0.001;
+  const fundingNegative = funding < -0.0005;
+  const bearishSkew = skew > 4;
+  const oiContracting = oiChange < -1;
+  const oiFilling = oiChange > 1;
+  const fearExtreme = fearGreed < 25;
+  const greedExtreme = fearGreed > 75;
+
+  if (longFlush && oiContracting && fearExtreme) {
+    return { label: 'Risk-Off · Deleveraging', color: '#991b1b', bg: '#fee2e2', border: '#fca5a5', detail: 'Long flush underway, OI contracting, fear elevated' };
+  }
+  if (shortSqueeze && oiFilling && fundingElevated) {
+    return { label: 'Risk-On · Short Squeeze', color: '#166534', bg: '#dcfce7', border: '#86efac', detail: 'Shorts being flushed, OI building, funding positive' };
+  }
+  if (bearishSkew && oiContracting) {
+    return { label: 'Cautious · Hedging Active', color: '#854d0e', bg: '#fef9c3', border: '#fde047', detail: 'Options market bid for puts, OI softening' };
+  }
+  if (fundingNegative && fearExtreme) {
+    return { label: 'Risk-Off · Bearish Bias', color: '#991b1b', bg: '#fee2e2', border: '#fca5a5', detail: 'Funding negative, fear elevated' };
+  }
+  if (greedExtreme && fundingElevated && oiFilling) {
+    return { label: 'Risk-On · Elevated', color: '#166534', bg: '#dcfce7', border: '#86efac', detail: 'Greed elevated, funding high, OI building — watch for flush' };
+  }
+  return { label: 'Neutral · Wait and See', color: '#374151', bg: '#f3f4f6', border: '#d1d5db', detail: 'No dominant signal across funding, OI and sentiment' };
 }
 
 function Sparkline({ data, color = '#2563eb', height = 80, labels, formatValue, onHoverChange }: {
@@ -205,6 +261,16 @@ function FundingRateKPI({ byAsset, loading }: { byAsset?: Record<string, number>
   const pct = !loading && rate !== 0 ? (rate * 100).toFixed(4) + '%' : '—';
   const rateColor = rate > 0 ? 'var(--green)' : rate < 0 ? 'var(--red)' : 'var(--text)';
 
+  const getInsight = (r: number): { text: string; type: 'bullish' | 'bearish' | 'warning' | 'neutral' } => {
+    const abs = Math.abs(r * 100);
+    if (r > 0.1) return { text: 'Elevated — longs overextended', type: 'warning' };
+    if (r > 0.05) return { text: 'Positive — longs paying', type: 'neutral' };
+    if (r > 0) return { text: 'Mild — not overextended', type: 'neutral' };
+    if (r < -0.05) return { text: 'Negative — shorts paying', type: 'bullish' };
+    return { text: 'Neutral', type: 'neutral' };
+  };
+  const insight = getInsight(rate);
+
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
@@ -222,9 +288,8 @@ function FundingRateKPI({ byAsset, loading }: { byAsset?: Record<string, number>
         ))}
       </div>
       <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: rateColor, lineHeight: 1.1, marginBottom: 4 }}>{pct}</div>
-      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-        {'Current 8H rate · avg across exchanges'}
-      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Current 8H rate · avg across exchanges</div>
+      {!loading && rate !== 0 && <InsightPill text={insight.text} type={insight.type} />}
     </div>
   );
 }
@@ -299,6 +364,175 @@ function GlobalMetricsCard({ pricesData }: { pricesData: any }) {
   );
 }
 
+function BasisCard({ basis }: { basis: any }) {
+  const value = basis?.basis;
+  const expiry = basis?.expiry;
+  const days = basis?.daysToExpiry;
+
+  const getInsight = (b: number): { text: string; type: 'bullish' | 'bearish' | 'warning' | 'neutral' } => {
+    if (b > 15) return { text: 'Elevated — strong institutional demand', type: 'bullish' };
+    if (b > 8) return { text: 'Healthy — institutions bid', type: 'bullish' };
+    if (b > 3) return { text: 'Moderate — neutral positioning', type: 'neutral' };
+    if (b > 0) return { text: 'Compressed — weak demand', type: 'warning' };
+    return { text: 'Backwardation — bearish signal', type: 'bearish' };
+  };
+
+  const insight = value !== null && value !== undefined ? getInsight(value) : null;
+
+  return (
+    <div className="card" style={{ padding: '14px 16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+        <div style={CARD_TITLE_STYLE}>BTC Futures Basis</div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Deribit (CME proxy)</div>
+      </div>
+      <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1.1, marginBottom: 4 }}>
+        {value !== null && value !== undefined ? `${value > 0 ? '+' : ''}${value.toFixed(1)}%` : '—'}
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+        {expiry && days ? `Annualised · ${expiry} · ${days}d to expiry` : 'Annualised quarterly basis'}
+      </div>
+      {insight && <InsightPill text={insight.text} type={insight.type} />}
+    </div>
+  );
+}
+
+function RegimeBar({ data }: { data: any }) {
+  const regime = calcRegime(data);
+  const now = new Date();
+  const timeStr = now.toLocaleString('en-SG', { timeZone: 'Asia/Singapore', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' SGT';
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 16,
+      padding: '10px 16px',
+      background: regime.bg,
+      border: `1px solid ${regime.border}`,
+      borderRadius: 8, marginBottom: 12,
+    }}>
+      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: regime.color, opacity: 0.7 }}>Market Regime</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: regime.color }}>{regime.label}</span>
+      <span style={{ fontSize: 11, color: regime.color, opacity: 0.75 }}>{regime.detail}</span>
+      <span style={{ fontSize: 11, color: regime.color, opacity: 0.6, marginLeft: 'auto' }}>{timeStr}</span>
+    </div>
+  );
+}
+
+function CommentaryCard() {
+  const [commentary, setCommentary] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [generatedAt, setGeneratedAt] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const generate = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/commentary', { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setCommentary(data.commentary);
+      setGeneratedAt(data.generatedAt);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="card" style={{ padding: '16px 20px', marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Sparkles size={14} style={{ color: 'var(--accent)' }} />
+          <span style={CARD_TITLE_STYLE}>Daily Market Commentary</span>
+        </div>
+        <button
+          onClick={generate}
+          disabled={loading}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '6px 14px', borderRadius: 6,
+            fontSize: 12, fontWeight: 500,
+            background: loading ? 'var(--surface2)' : 'var(--accent)',
+            color: loading ? 'var(--text-muted)' : '#fff',
+            border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          {loading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+          {loading ? 'Generating...' : commentary ? 'Regenerate' : 'Generate for today'}
+        </button>
+      </div>
+
+      {!commentary && !loading && !error && (
+        <div style={{
+          padding: '24px 0', textAlign: 'center',
+          color: 'var(--text-muted)', fontSize: 13,
+          borderTop: '1px solid var(--border)',
+        }}>
+          Click "Generate for today" to produce an AI-written market briefing based on live data and today's news.
+        </div>
+      )}
+
+      {loading && (
+        <div style={{
+          padding: '24px 0', textAlign: 'center',
+          color: 'var(--text-muted)', fontSize: 13,
+          borderTop: '1px solid var(--border)',
+        }}>
+          <Loader2 size={16} className="animate-spin" style={{ marginBottom: 8, display: 'block', margin: '0 auto 8px' }} />
+          Searching today's news and analysing market structure...
+        </div>
+      )}
+
+      {error && (
+        <div style={{
+          padding: '12px 16px', borderRadius: 6,
+          background: 'var(--red-light)', border: '1px solid #fecaca',
+          fontSize: 12, color: 'var(--red)',
+          borderTop: '1px solid var(--border)',
+        }}>
+          Error generating commentary: {error}
+        </div>
+      )}
+
+      {commentary && !loading && (
+        <>
+          <div style={{
+            fontSize: 13, lineHeight: 1.8,
+            color: 'var(--text)',
+            borderLeft: '2px solid var(--border)',
+            paddingLeft: 16,
+            borderTop: '1px solid var(--border)',
+            paddingTop: 12,
+          }}>
+            {commentary}
+          </div>
+          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+            {generatedAt && (
+              <span style={{
+                fontSize: 10, color: 'var(--text-muted)',
+                padding: '2px 8px', borderRadius: 4,
+                background: 'var(--surface2)',
+              }}>
+                Generated {new Date(generatedAt).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit' })} SGT
+              </span>
+            )}
+            <span style={{
+              fontSize: 10, color: 'var(--text-muted)',
+              padding: '2px 8px', borderRadius: 4,
+              background: 'var(--surface2)',
+            }}>
+              AI-generated · live data + web search
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function buildSpotVolumeCharts(rawData: any): Record<string, Record<string, any[]>> {
   if (!rawData) return {};
   const now = Date.now() / 1000;
@@ -353,6 +587,21 @@ export default function Dashboard() {
   const prices = pricesData?.prices;
   const spotVolumeCharts = buildSpotVolumeCharts(data?.spotvolume);
 
+  const longLiqs = c?.liquidations?.longs24h ?? 0;
+  const shortLiqs = c?.liquidations?.shorts24h ?? 0;
+  const liqInsight = shortLiqs > longLiqs * 3
+    ? { text: 'Short squeeze — not deleveraging', type: 'bullish' as const }
+    : longLiqs > shortLiqs * 3
+    ? { text: 'Long flush — deleveraging event', type: 'bearish' as const }
+    : { text: 'Mixed — no dominant direction', type: 'neutral' as const };
+
+  const oiChange = c?.openInterest?.change24h ?? 0;
+  const oiInsight = oiChange > 1
+    ? { text: 'Building — new money entering', type: 'warning' as const }
+    : oiChange < -1
+    ? { text: 'Contracting — de-risking signal', type: 'warning' as const }
+    : { text: 'Stable — no major shift', type: 'neutral' as const };
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       <header style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 50 }}>
@@ -389,6 +638,12 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* Regime Bar */}
+        {data && <RegimeBar data={data} />}
+
+        {/* Commentary */}
+        <CommentaryCard />
+
         {/* Row 1: Spot Price + Global Market */}
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
           <SpotPriceCard prices={prices} />
@@ -407,8 +662,9 @@ export default function Dashboard() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 18 }}>
               <Badge value={c?.openInterest?.change24h} />
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>BTC/ETH/SOL/XRP · Major exchanges</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>BTC/ETH/SOL/XRP</span>
             </div>
+            {!loading && <InsightPill text={oiInsight.text} type={oiInsight.type} />}
           </div>
 
           <div className="card" style={{ padding: '14px 16px' }}>
@@ -435,6 +691,7 @@ export default function Dashboard() {
                 Longs: {formatUSD(c.liquidations.longs24h)} · Shorts: {formatUSD(c.liquidations.shorts24h)}
               </div>
             )}
+            {!loading && <InsightPill text={liqInsight.text} type={liqInsight.type} />}
           </div>
 
           <FundingRateKPI byAsset={c?.fundingRate?.byAsset} loading={loading} />
@@ -478,15 +735,16 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Row 5: Fear & Greed, Options, ETF */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+        {/* Row 5: Fear & Greed, Options, ETF + Basis */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
           <FearGreedCard data={fg} loading={loading} />
           <OptionsCard data={d} loading={loading} />
           <ETFCard data={etf} loading={loading} />
+          <BasisCard basis={d?.basis} />
         </div>
 
         <div style={{ textAlign: 'center', padding: '12px 0 4px', fontSize: 11, color: 'var(--text-muted)' }}>
-          Derivatives: Coinalyze ({EXCHANGES}) · Prices, Volume & Global: CoinGecko · Options: Deribit · Sentiment: Alternative.me · ETF Flows: Farside Investors
+          Derivatives: Coinalyze ({EXCHANGES}) · Prices, Volume & Global: CoinGecko · Options & Basis: Deribit · Sentiment: Alternative.me · ETF Flows: Farside Investors
         </div>
       </main>
     </div>
