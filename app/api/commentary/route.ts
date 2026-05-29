@@ -140,9 +140,12 @@ export async function POST() {
     });
 
     // Get the LAST text block — the actual briefing, not the preamble
-    const textBlocks = response.content.filter((b: any) => b.type === 'text');
-    const lastTextBlock = textBlocks[textBlocks.length - 1];
-    const commentary = lastTextBlock?.type === 'text' ? lastTextBlock.text.trim() : 'Commentary unavailable.';
+    // Concatenate all text blocks, skipping preamble lines
+const textBlocks = response.content
+  .filter((b: any) => b.type === 'text')
+  .map((b: any) => b.text.trim())
+  .filter((t: string) => !t.toLowerCase().startsWith("i'll search") && !t.toLowerCase().startsWith("i will search") && !t.toLowerCase().startsWith("let me search"));
+const commentary = textBlocks.join(' ').trim() || 'Commentary unavailable.';
 
     return NextResponse.json({
       commentary,
