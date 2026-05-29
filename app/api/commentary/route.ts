@@ -15,13 +15,14 @@ const SYSTEM_PROMPT = `You are a senior crypto market analyst writing a daily br
 
 Your briefing should read like it came from a trader who has already spent 2 hours on the desk — sharp, opinionated, and grounded in what actually moved markets. It should feel like a Bloomberg terminal note, not a data summary.
 
-BEFORE WRITING: Use the web search tool to find today's most relevant news and market developments. Search for:
-- Current crypto market news and price action drivers
-- Macro news affecting risk appetite today (Fed, rates, equities, DXY, gold)
-- Bitcoin and Ethereum specific developments today
-- ETF flow news and institutional crypto activity
-- Geopolitical events affecting markets today
-- What crypto analysts and traders are saying on social media today
+BEFORE WRITING: Use the web search tool to find today's most relevant news and market developments. Run AT LEAST 5 separate searches covering different angles:
+1. "bitcoin crypto market news today" — general market drivers
+2. "bitcoin ETF flows institutional today" — ETF and institutional activity
+3. "macro rates DXY equities crypto today" — cross-asset context
+4. "Kobeissi Letter OR ZeroHedge crypto markets today" — analyst commentary
+5. "bitcoin liquidations on-chain derivatives today" — derivatives and positioning
+
+You MUST search multiple different sources. Do not rely on a single outlet. If your first searches return mostly CoinDesk results, run additional searches targeting other outlets: zerohedge.com, theblock.co, decrypt.co, bloomberg.com crypto, reuters.com crypto, ft.com crypto.
 
 SUPPLEMENTARY SOURCES — search for recent posts or coverage from these accounts. Use what you find to supplement the narrative — only reference something if you actually found it, never fabricate:
 - Kobeissi Letter markets crypto (kobeissiletter.com or x.com/KobeisseiLetter)
@@ -30,6 +31,8 @@ SUPPLEMENTARY SOURCES — search for recent posts or coverage from these account
 - BullTheory crypto (x.com/BullTheoryio)
 - CoinDesk news today (coindesk.com)
 - Zero Hedge markets today (zerohedge.com)
+- The Block crypto news (theblock.co)
+- Decrypt crypto news (decrypt.co)
 - Barchart crypto options today
 - Kalshi crypto prediction markets
 
@@ -59,7 +62,7 @@ TONE:
 FORMAT:
 You must return a valid JSON object with exactly two fields:
 {
-  "commentary": "the briefing paragraph as a single clean string with no line breaks",
+  "commentary": "the briefing paragraph as a single clean string with no line breaks and no citation tags",
   "sources": [
     { "title": "short source label", "url": "https://..." },
     ...
@@ -67,8 +70,8 @@ You must return a valid JSON object with exactly two fields:
 }
 
 Rules:
-- "commentary" must be one clean unbroken paragraph. No line breaks. No preamble like "Based on my research" or "Here is the briefing". Open directly with the market narrative.
-- "sources" must only contain URLs you actually retrieved during your web searches. Maximum 5 sources. Only include sources that directly informed the briefing. Do not fabricate URLs.
+- "commentary" must be one clean unbroken paragraph. No line breaks. No citation tags like <cite> or [1] or any inline references. No preamble. Open directly with the market narrative.
+- "sources" must contain a diverse mix of outlets — not all from the same domain. Maximum 5 sources. Only include URLs you actually retrieved. Do not fabricate URLs.
 - Return raw JSON only. No markdown code fences, no explanation outside the JSON.`;
 
 function buildUserPrompt(data: any): string {
@@ -97,9 +100,7 @@ function buildUserPrompt(data: any): string {
 
   return `Today is ${today}.
 
-Search the web for today's most relevant crypto and macro news before writing. Run multiple searches covering: current crypto market drivers, macro/rates news, ETF flows, institutional activity, analyst sentiment, and the supplementary sources listed in your instructions.
-
-Focus on news and posts from the last 24 hours only.
+Run at least 5 separate web searches across different topics and sources before writing. Focus on news from the last 24 hours only. Make sure your searches cover different outlets — not just one news site.
 
 Here is the live market data to weave into the briefing:
 
@@ -120,7 +121,16 @@ Derivatives:
   - SOL: ${typeof fundingByAsset.SOL === 'number' ? (fundingByAsset.SOL * 100).toFixed(4) + '%' : 'N/A'}
   - XRP: ${typeof fundingByAsset.XRP === 'number' ? (fundingByAsset.XRP * 100).toFixed(4) + '%' : 'N/A'}
 
-Now search for today's news, then return the JSON object as specified. No preamble. No markdown. Raw JSON only.`;
+Now search, then return the JSON object only. No preamble. No markdown. Raw JSON. The commentary field must contain no citation tags.`;
+}
+
+function stripCitations(text: string): string {
+  return text
+    .replace(/<cite[^>]*>/g, '')
+    .replace(/<\/cite>/g, '')
+    .replace(/\[\d+\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export async function POST() {
@@ -166,7 +176,6 @@ export async function POST() {
       messages: [{ role: 'user', content: userPrompt }],
     });
 
-    // Extract all text blocks and join
     const rawText = response.content
       .filter((b: any) => b.type === 'text')
       .map((b: any) => b.text.trim())
@@ -175,7 +184,6 @@ export async function POST() {
       .replace(/\s+/g, ' ')
       .trim();
 
-    // Parse JSON — strip markdown fences if present
     let commentary = 'Commentary unavailable.';
     let sources: { title: string; url: string }[] = [];
 
@@ -186,18 +194,14 @@ export async function POST() {
         .replace(/```\s*$/i, '')
         .trim();
 
-      // Find JSON object in the text
       const jsonMatch = clean.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
-        commentary = parsed.commentary?.trim() || commentary;
+        commentary = stripCitations(parsed.commentary?.trim() || commentary);
         sources = Array.isArray(parsed.sources) ? parsed.sources.slice(0, 5) : [];
       }
     } catch {
-      // If JSON parsing fails, use raw text as commentary
-      commentary = rawText
-        .replace(/\{[\s\S]*\}/, '')
-        .trim() || rawText;
+      commentary = stripCitations(rawText.replace(/\{[\s\S]*\}/, '').trim() || rawText);
     }
 
     return NextResponse.json({
