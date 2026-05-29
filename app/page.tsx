@@ -535,24 +535,22 @@ function CommentaryCard() {
                 Sources
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {sources.map((s, i) => (
-                  
-                    key={i}
-                    href={s.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      fontSize: 10, padding: '2px 8px', borderRadius: 4,
-                      background: 'var(--surface2)',
-                      color: 'var(--accent)',
-                      border: '1px solid var(--border)',
-                      textDecoration: 'none',
-                      fontWeight: 500,
-                    }}
-                  >
-                    {s.title}
-                  </a>
-                ))}
+                {sources.map((s: { title: string; url: string }, i: number) => (
+  
+    key={i}
+    href={s.url}
+    target="_blank"
+    rel="noopener noreferrer"
+    style={{
+      fontSize: 10, padding: '2px 8px', borderRadius: 4,
+      background: 'var(--surface2)',
+      color: 'var(--accent)',
+      border: '1px solid var(--border)',
+      textDecoration: 'none',
+      fontWeight: 500,
+    }}
+  >{s.title}</a>
+))}
               </div>
             </div>
           )}
