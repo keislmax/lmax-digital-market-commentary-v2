@@ -23,7 +23,17 @@ BEFORE WRITING: Use the web search tool to find today's most relevant news and m
 - Geopolitical events affecting markets today
 - What crypto analysts and traders are saying on social media today
 
-LEAD WITH THE DOMINANT NARRATIVE OF THE DAY. Ask yourself: what is the single most important thing happening in crypto markets right now? That is your opening. It might be a macro event, a liquidation cascade, an ETF flow surprise, a geopolitical development, or a sentiment shift visible on social media. Whatever is most market-moving leads — not the data.
+SUPPLEMENTARY SOURCES — search for recent posts or coverage from these accounts. Use what you find to supplement the narrative — only reference something if you actually found it, never fabricate:
+- Kobeissi Letter markets crypto (kobeissiletter.com or x.com/KobeisseiLetter)
+- Eric Balchunas bitcoin ETF (x.com/EricBalchunas or Bloomberg ETF coverage)
+- aixbt_agent crypto analysis (x.com/aixbt_agent)
+- BullTheory crypto (x.com/BullTheoryio)
+- CoinDesk news today (coindesk.com)
+- Zero Hedge markets today (zerohedge.com)
+- Barchart crypto options today
+- Kalshi crypto prediction markets
+
+LEAD WITH THE DOMINANT NARRATIVE OF THE DAY. Ask yourself: what is the single most important thing happening in crypto markets right now? That is your opening. It might be a macro event, a liquidation cascade, an ETF flow surprise, a geopolitical development, or a sentiment shift. Whatever is most market-moving leads — not the data.
 
 The live market data you are given is context and supporting evidence. Do not summarise it. Use it to validate or challenge the narrative. A good briefing weaves one or two key numbers into a sentence naturally — it does not list metrics.
 
@@ -44,10 +54,13 @@ TONE:
 - 4-6 sentences, dense. Every sentence earns its place.
 - Numbers appear inside sentences to support a point, never as the opening or as a list.
 - End with one specific thing to watch — a level, an event, or a position building that could resolve in the next 24-48H.
+- Write in neutral third-person analyst voice throughout. No first-person ("I", "my"). No second-person ("your"). Just "funding rates show...", "OI contracted...", "the market is pricing...".
 
 FORMAT:
-Return plain text only. No headers, no bullet points, no markdown. Just the paragraph.
-Do not include any preamble like "I'll search for..." or "Here is the briefing". Output only the final briefing paragraph.
+- Return plain text only. No headers, no bullet points, no markdown, no line breaks within the paragraph.
+- Do NOT open with any preamble such as "Based on my research", "Here is today's briefing", "Here is the briefing" or any similar phrase.
+- Write as one clean, unbroken paragraph with no internal line breaks or gaps.
+- Open directly with the market narrative — the very first word should be part of the story.
 
 EXAMPLE OF GOOD TONE (do not copy, just match the style):
 "Risk appetite is fragile after last night's long flush, which cleared the crowded positioning that had built through the week without triggering a trend reversal. The move tracked a broader de-risking in equities after the treasury auction came in weak, with DXY catching a bid that pressured the entire risk complex. Spot held the key level but the derivatives market is telling a more cautious story — puts are bid up and basis has compressed, suggesting institutional desks are hedging rather than adding. Watch whether BTC can reclaim and hold above the 72k level into the US open; failure there opens the door to another leg lower as leveraged longs that survived last night's flush face margin pressure again."`;
@@ -78,28 +91,11 @@ function buildUserPrompt(data: any): string {
 
   return `Today is ${today}.
 
-Before writing, search the web to gather today's market context. Run searches covering:
+Search the web for today's most relevant crypto and macro news before writing. Run multiple searches covering: current crypto market drivers, macro/rates news, ETF flows, institutional activity, analyst sentiment, and the supplementary sources listed in your instructions.
 
-PRIMARY — general market news:
-- "crypto market news today"
-- "bitcoin macro news today"
-- "BTC ETF flows today"
-- "crypto liquidations today"
+Focus on news and posts from the last 24 hours only.
 
-SUPPLEMENTARY — analyst and social sentiment (last 24 hours):
-Search for recent posts or coverage from these accounts and sources. Use what you find to supplement the narrative — only reference something if you actually found it, never fabricate:
-- Kobeissi Letter markets crypto (kobeissiletter.com or x.com/KobeisseiLetter)
-- Eric Balchunas bitcoin ETF (x.com/EricBalchunas or Bloomberg ETF coverage)
-- aixbt_agent crypto analysis (x.com/aixbt_agent)
-- BullTheory crypto (x.com/BullTheoryio)
-- CoinDesk news today (coindesk.com)
-- Zero Hedge markets today (zerohedge.com)
-- Barchart crypto options today
-- Kalshi crypto prediction markets
-
-Only use what you actually find from searches. Do not attribute views to accounts unless you found a real source. Use these accounts to surface topics or narratives that might not appear in mainstream crypto news — contrarian takes, on-chain signals, ETF flow analysis, macro cross-asset reads.
-
-Here is the live market data to weave into your briefing:
+Here is the live market data to weave into the briefing:
 
 Spot prices:
 - BTC: $${btcPrice} (${typeof btcChange === 'number' ? btcChange.toFixed(2) : btcChange}% 24H)
@@ -118,7 +114,7 @@ Derivatives:
   - SOL: ${typeof fundingByAsset.SOL === 'number' ? (fundingByAsset.SOL * 100).toFixed(4) + '%' : 'N/A'}
   - XRP: ${typeof fundingByAsset.XRP === 'number' ? (fundingByAsset.XRP * 100).toFixed(4) + '%' : 'N/A'}
 
-Now write the briefing paragraph only. No preamble. Lead with the dominant narrative from today's news and analyst sentiment, weaving in the live data as supporting context.`;
+Now write the briefing paragraph only. No preamble. No first-person. Open directly with the market narrative.`;
 }
 
 export async function POST() {
@@ -138,7 +134,10 @@ export async function POST() {
     if (Array.isArray(pricesRes)) {
       pricesRes.forEach((coin: any) => {
         const idx = coinIds.indexOf(coin.id);
-        if (idx !== -1) priceMap[symbols[idx]] = { price: coin.current_price, change24h: coin.price_change_percentage_24h };
+        if (idx !== -1) priceMap[symbols[idx]] = {
+          price: coin.current_price,
+          change24h: coin.price_change_percentage_24h,
+        };
       });
     }
 
@@ -161,13 +160,31 @@ export async function POST() {
       messages: [{ role: 'user', content: userPrompt }],
     });
 
-    // Get the LAST text block — the actual briefing, not the preamble
-    // Concatenate all text blocks, skipping preamble lines
-const textBlocks = response.content
-  .filter((b: any) => b.type === 'text')
-  .map((b: any) => b.text.trim())
-  .filter((t: string) => !t.toLowerCase().startsWith("i'll search") && !t.toLowerCase().startsWith("i will search") && !t.toLowerCase().startsWith("let me search"));
-const commentary = textBlocks.join(' ').trim() || 'Commentary unavailable.';
+    // Concatenate all text blocks, filter preamble, clean whitespace
+    const PREAMBLE_PATTERNS = [
+      "i'll search",
+      "i will search",
+      "let me search",
+      "based on my research",
+      "here is today",
+      "here is the briefing",
+      "here's today",
+      "here's the briefing",
+    ];
+
+    const textBlocks = response.content
+      .filter((b: any) => b.type === 'text')
+      .map((b: any) => b.text.trim())
+      .filter((t: string) => {
+        const lower = t.toLowerCase();
+        return !PREAMBLE_PATTERNS.some(p => lower.startsWith(p));
+      });
+
+    const commentary = textBlocks
+      .join(' ')
+      .replace(/\n+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim() || 'Commentary unavailable.';
 
     return NextResponse.json({
       commentary,
