@@ -536,11 +536,9 @@ function CommentaryCard() {
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {sources.map((s: { title: string; url: string }, i: number) => (
-  
+  <button
     key={i}
-    href={s.url}
-    target="_blank"
-    rel="noopener noreferrer"
+    onClick={() => window.open(s.url, '_blank', 'noopener,noreferrer')}
     style={{
       fontSize: 10, padding: '2px 8px', borderRadius: 4,
       background: 'var(--surface2)',
@@ -548,8 +546,10 @@ function CommentaryCard() {
       border: '1px solid var(--border)',
       textDecoration: 'none',
       fontWeight: 500,
+      cursor: 'pointer',
+      fontFamily: 'inherit',
     }}
-  >{s.title}</a>
+  >{s.title}</button>
 ))}
               </div>
             </div>
