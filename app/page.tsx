@@ -363,11 +363,6 @@ function GlobalMetricsCard({ pricesData }: { pricesData: any }) {
   );
 }
 
-function BasisCard({ basis }: { basis: any }) {
-  const value = basis?.basis;
-  const expiry = basis?.expiry;
-  const days = basis?.daysToExpiry;
-
   const getInsight = (b: number): { text: string; type: 'bullish' | 'bearish' | 'warning' | 'neutral' } => {
     if (b > 15) return { text: 'Elevated, strong institutional demand', type: 'bullish' };
     if (b > 8) return { text: 'Healthy, institutions bid', type: 'bullish' };
@@ -755,11 +750,10 @@ export default function Dashboard() {
           />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
           <FearGreedCard data={fg} loading={loading} />
           <OptionsCard data={d} loading={loading} />
           <ETFCard data={etf} loading={loading} />
-          <BasisCard basis={d?.basis} />
         </div>
 
         <div style={{ textAlign: 'center', padding: '12px 0 4px', fontSize: 11, color: 'var(--text-muted)' }}>
