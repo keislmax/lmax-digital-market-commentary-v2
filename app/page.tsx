@@ -418,6 +418,7 @@ function RegimeBar({ data }: { data: any }) {
 
 function CommentaryCard() {
   const [commentary, setCommentary] = useState<string | null>(null);
+  const [sources, setSources] = useState<{ title: string; url: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [generatedAt, setGeneratedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -431,6 +432,7 @@ function CommentaryCard() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setCommentary(data.commentary);
+      setSources(data.sources || []);
       setGeneratedAt(data.generatedAt);
     } catch (err: any) {
       setError(err.message);
@@ -490,7 +492,6 @@ function CommentaryCard() {
           padding: '12px 16px', borderRadius: 6,
           background: 'var(--red-light)', border: '1px solid #fecaca',
           fontSize: 12, color: 'var(--red)',
-          borderTop: '1px solid var(--border)',
         }}>
           Error generating commentary: {error}
         </div>
@@ -508,7 +509,8 @@ function CommentaryCard() {
           }}>
             {commentary}
           </div>
-          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+
+          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
             {generatedAt && (
               <span style={{
                 fontSize: 10, color: 'var(--text-muted)',
@@ -526,6 +528,34 @@ function CommentaryCard() {
               Live data + Web search
             </span>
           </div>
+
+          {sources.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 9, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Sources
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {sources.map((s, i) => (
+                  
+                    key={i}
+                    href={s.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontSize: 10, padding: '2px 8px', borderRadius: 4,
+                      background: 'var(--surface2)',
+                      color: 'var(--accent)',
+                      border: '1px solid var(--border)',
+                      textDecoration: 'none',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {s.title}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
