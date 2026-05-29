@@ -47,6 +47,7 @@ TONE:
 
 FORMAT:
 Return plain text only. No headers, no bullet points, no markdown. Just the paragraph.
+Do not include any preamble like "I'll search for..." or "Here is the briefing". Output only the final briefing paragraph.
 
 EXAMPLE OF GOOD TONE (do not copy, just match the style):
 "Risk appetite is fragile after last night's long flush, which cleared the crowded positioning that had built through the week without triggering a trend reversal. The move tracked a broader de-risking in equities after the treasury auction came in weak, with DXY catching a bid that pressured the entire risk complex. Spot held the key level but the derivatives market is telling a more cautious story — puts are bid up and basis has compressed, suggesting institutional desks are hedging rather than adding. Watch whether BTC can reclaim and hold above the 72k level into the US open; failure there opens the door to another leg lower as leveraged longs that survived last night's flush face margin pressure again."`;
@@ -95,7 +96,7 @@ Derivatives:
   - SOL: ${typeof fundingByAsset.SOL === 'number' ? (fundingByAsset.SOL * 100).toFixed(4) + '%' : 'N/A'}
   - XRP: ${typeof fundingByAsset.XRP === 'number' ? (fundingByAsset.XRP * 100).toFixed(4) + '%' : 'N/A'}
 
-Now search for today's news, then write the briefing.`;
+Now search for today's news, then write the briefing paragraph only. No preamble.`;
 }
 
 export async function POST() {
@@ -130,7 +131,6 @@ export async function POST() {
 
     const userPrompt = buildUserPrompt(allData);
 
-    // Agentic loop to handle web search tool use
     const messages: Anthropic.MessageParam[] = [
       { role: 'user', content: userPrompt },
     ];
@@ -150,21 +150,20 @@ export async function POST() {
         messages,
       });
 
-      // If model is done, extract text and break
+      // Always add assistant response to history
+      messages.push({ role: 'assistant', content: response.content });
+
       if (response.stop_reason === 'end_turn') {
+        // Final response — extract the briefing text
         const textBlock = response.content.find((b: any) => b.type === 'text');
         if (textBlock && textBlock.type === 'text') {
-          commentary = textBlock.text;
+          commentary = textBlock.text.trim();
         }
         break;
       }
 
-      // If model wants to use tools, process and continue
       if (response.stop_reason === 'tool_use') {
-        // Add assistant's response to messages
-        messages.push({ role: 'assistant', content: response.content });
-
-        // Build tool results
+        // Model is searching — build tool results and continue
         const toolResults: Anthropic.ToolResultBlockParam[] = response.content
           .filter((b: any) => b.type === 'tool_use')
           .map((b: any) => ({
@@ -182,7 +181,7 @@ export async function POST() {
       // Any other stop reason — extract text if present and break
       const textBlock = response.content.find((b: any) => b.type === 'text');
       if (textBlock && textBlock.type === 'text') {
-        commentary = textBlock.text;
+        commentary = textBlock.text.trim();
       }
       break;
     }
