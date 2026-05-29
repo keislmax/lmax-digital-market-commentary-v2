@@ -137,19 +137,19 @@ export default function OptionsCard({ data, loading }: Props) {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-            <MetricBox
-              label="ETH Futures Basis"
-              value={ethBasis?.basis !== null && ethBasis?.basis !== undefined ? `${ethBasis.basis > 0 ? '+' : ''}${ethBasis.basis.toFixed(1)}%` : '—'}
-              sub={ethBasisLabel}
-              valueColor={ethBasisColor}
-            />
-            <MetricBox
-              label="Vol Term Structure"
-              value={tsDisplay}
-              sub={`7D · 30D · 90D ATM IV · ${tsLabel}`}
-              valueColor={tsColor}
-            />
-          </div>
+  <MetricBox
+    label="ETH Futures Basis"
+    value={ethBasis?.basis !== null && ethBasis?.basis !== undefined ? `${ethBasis.basis > 0 ? '+' : ''}${ethBasis.basis.toFixed(1)}%` : '—'}
+    sub={ethBasisLabel}
+    valueColor={ethBasisColor}
+  />
+  <MetricBox
+    label="BTC Futures Basis"
+    value={(data as any)?.basis?.basis !== null && (data as any)?.basis?.basis !== undefined ? `${(data as any).basis.basis > 0 ? '+' : ''}${(data as any).basis.basis.toFixed(1)}%` : '—'}
+    sub={(data as any)?.basis?.expiry && (data as any)?.basis?.daysToExpiry ? `${(data as any).basis.expiry} · ${(data as any).basis.daysToExpiry}d to expiry` : 'Annualised quarterly basis'}
+    valueColor={(data as any)?.basis?.basis > 8 ? 'var(--green)' : (data as any)?.basis?.basis > 0 ? '#d97706' : 'var(--red)'}
+  />
+</div>
 
           <div style={{ marginBottom: 10 }}>
             <MetricBox
