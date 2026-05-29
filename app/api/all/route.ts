@@ -154,10 +154,76 @@ async function calcBasis(currency: string): Promise<{ basis: number | null; expi
   } catch { return { basis: null, expiry: null, daysToExpiry: null }; }
 }
 
+async function calcVolTermStructure(currency: string): Promise<{ d7: number | null; d30: number | null; d90: number | null; shape: string }> {
+  try {
+    const now = Date.now();
+    const targets = [
+      { label: 'd7',  ms: 7  * 86400000 },
+      { label: 'd30', ms: 30 * 86400000 },
+      { label: 'd90', ms: 90 * 86400000 },
+    ];
+    const instruments: any[] = await fetchDeribit('get_instruments', { currency, kind: 'option', expired: 'false' });
+    if (!Array.isArray(instruments) || !instruments.length) return { d7: null, d30: null, d90: null, shape: 'unavailable' };
+    const idx = await fetchDeribit('get_index_price', { index_name: `${currency.toLowerCase()}_usd` });
+    const spot: number = idx?.index_price ?? 0;
+    if (!spot) return { d7: null, d30: null, d90: null, shape: 'unavailable' };
+    const results: Record<string, number | null> = {};
+    for (const target of targets) {
+      try {
+        const targetTs = now + target.ms;
+        const withDiff = instruments.map(i => ({ ...i, diff: Math.abs(i.expiration_timestamp - targetTs) }));
+        withDiff.sort((a, b) => a.diff - b.diff);
+        const nearestExpiry = withDiff[0]?.expiration_timestamp;
+        if (!nearestExpiry) { results[target.label] = null; continue; }
+        const atExpiry = instruments.filter(i => i.expiration_timestamp === nearestExpiry);
+        const calls = atExpiry.filter(i => i.option_type === 'call').sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot));
+        if (!calls.length) { results[target.label] = null; continue; }
+        const ticker = await fetchDeribit('ticker', { instrument_name: calls[0].instrument_name });
+        const iv = ticker?.mark_iv;
+        results[target.label] = typeof iv === 'number' && iv > 0 ? Math.round(iv * 10) / 10 : null;
+      } catch {
+        results[target.label] = null;
+      }
+    }
+    const d7  = results['d7']  ?? null;
+    const d30 = results['d30'] ?? null;
+    const d90 = results['d90'] ?? null;
+    let shape = 'unavailable';
+    if (d7 !== null && d30 !== null && d90 !== null) {
+      if (d7 > d30 && d30 > d90) shape = 'backwardation';
+      else if (d7 < d30 && d30 < d90) shape = 'contango';
+      else if (d7 > d30) shape = 'front backwardation';
+      else shape = 'flat';
+    }
+    return { d7, d30, d90, shape };
+  } catch { return { d7: null, d30: null, d90: null, shape: 'unavailable' }; }
+}
+
+async function calcPutCallRatio(currency: string): Promise<{ ratio: number | null; putOI: number | null; callOI: number | null }> {
+  try {
+    const instruments: any[] = await fetchDeribit('get_instruments', { currency, kind: 'option', expired: 'false' });
+    if (!Array.isArray(instruments) || !instruments.length) return { ratio: null, putOI: null, callOI: null };
+    const summary = await fetchDeribit('get_book_summary_by_currency', { currency, kind: 'option' });
+    if (!Array.isArray(summary)) return { ratio: null, putOI: null, callOI: null };
+    const typeMap: Record<string, string> = {};
+    instruments.forEach(i => { typeMap[i.instrument_name] = i.option_type; });
+    let putOI = 0;
+    let callOI = 0;
+    summary.forEach((s: any) => {
+      const oi = s.open_interest ?? 0;
+      const type = typeMap[s.instrument_name];
+      if (type === 'put') putOI += oi;
+      else if (type === 'call') callOI += oi;
+    });
+    if (callOI === 0) return { ratio: null, putOI, callOI };
+    return { ratio: Math.round((putOI / callOI) * 100) / 100, putOI: Math.round(putOI), callOI: Math.round(callOI) };
+  } catch { return { ratio: null, putOI: null, callOI: null }; }
+}
+
 async function getDeribit() {
   try {
     const now = Date.now();
-    const [btcCharts, ethCharts, btcSkew, ethSkew, btcBasis] = await Promise.all([
+    const [btcCharts, ethCharts, btcSkew, ethSkew, btcBasis, ethBasis, btcTermStructure, btcPutCall] = await Promise.all([
       Promise.all(['24h','7d','30d','90d','1y'].map((tf, i) => {
         const ms = [86400000, 7*86400000, 30*86400000, 90*86400000, 365*86400000][i];
         const res = [3600, 3600, 86400, 86400, 86400][i];
@@ -171,6 +237,9 @@ async function getDeribit() {
       calcSkew('BTC'),
       calcSkew('ETH'),
       calcBasis('BTC'),
+      calcBasis('ETH'),
+      calcVolTermStructure('BTC'),
+      calcPutCallRatio('BTC'),
     ]);
     const toChart = (d: any) => (d?.data || []).map((p: number[]) => ({ t: Math.floor(p[0] / 1000), v: p[4] }));
     const tfs = ['24h','7d','30d','90d','1y'];
@@ -181,8 +250,16 @@ async function getDeribit() {
     const interpSkew = (s: number | null) => s === null ? 'unavailable' : s > 3 ? 'bearish (puts bid up)' : s < -3 ? 'bullish (calls bid up)' : 'neutral';
     return {
       dvol: { current: btcCurrent, chartsByAsset: { BTC: btcChartsByTf, ETH: ethChartsByTf } },
-      skew: { value25d: btcSkew === 0 ? null : btcSkew, interpretation: interpSkew(btcSkew), BTC: { value25d: btcSkew, interpretation: interpSkew(btcSkew) }, ETH: { value25d: ethSkew === 0 ? null : ethSkew, interpretation: interpSkew(ethSkew === 0 ? null : ethSkew) } },
+      skew: {
+        value25d: btcSkew === 0 ? null : btcSkew,
+        interpretation: interpSkew(btcSkew),
+        BTC: { value25d: btcSkew, interpretation: interpSkew(btcSkew) },
+        ETH: { value25d: ethSkew === 0 ? null : ethSkew, interpretation: interpSkew(ethSkew === 0 ? null : ethSkew) },
+      },
       basis: btcBasis,
+      ethBasis,
+      termStructure: btcTermStructure,
+      putCallRatio: btcPutCall,
       skewDebug: { btc: btcSkew, eth: ethSkew },
       updatedAt: Date.now(),
     };
