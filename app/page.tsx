@@ -362,34 +362,6 @@ function GlobalMetricsCard({ pricesData }: { pricesData: any }) {
     </div>
   );
 }
-
-  const getInsight = (b: number): { text: string; type: 'bullish' | 'bearish' | 'warning' | 'neutral' } => {
-    if (b > 15) return { text: 'Elevated, strong institutional demand', type: 'bullish' };
-    if (b > 8) return { text: 'Healthy, institutions bid', type: 'bullish' };
-    if (b > 3) return { text: 'Moderate, neutral positioning', type: 'neutral' };
-    if (b > 0) return { text: 'Compressed, weak demand', type: 'warning' };
-    return { text: 'Backwardation, bearish signal', type: 'bearish' };
-  };
-
-  const insight = value !== null && value !== undefined ? getInsight(value) : null;
-
-  return (
-    <div className="card" style={{ padding: '14px 16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-        <div style={CARD_TITLE_STYLE}>BTC Futures Basis</div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Deribit (CME proxy)</div>
-      </div>
-      <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1.1, marginBottom: 4 }}>
-        {value !== null && value !== undefined ? `${value > 0 ? '+' : ''}${value.toFixed(1)}%` : '—'}
-      </div>
-      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-        {expiry && days ? `Annualised · ${expiry} · ${days}d to expiry` : 'Annualised quarterly basis'}
-      </div>
-      {insight && <InsightPill text={insight.text} type={insight.type} />}
-    </div>
-  );
-}
-
 function RegimeBar({ data }: { data: any }) {
   const regime = calcRegime(data);
   const now = new Date();
