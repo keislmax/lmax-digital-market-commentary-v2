@@ -71,11 +71,33 @@ function buildUserPrompt(data: any): string {
   const funding = c?.fundingRate?.current ?? 'N/A';
   const fundingByAsset = c?.fundingRate?.byAsset ?? {};
 
-  const today = new Date().toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const today = new Date().toLocaleDateString('en-SG', {
+    timeZone: 'Asia/Singapore',
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  });
 
   return `Today is ${today}.
 
-Search the web for today's most relevant crypto and macro news before writing. Use multiple searches to cover: current crypto market drivers, macro/rates news, ETF flows, institutional activity, and analyst sentiment.
+Before writing, search the web to gather today's market context. Run searches covering:
+
+PRIMARY — general market news:
+- "crypto market news today"
+- "bitcoin macro news today"
+- "BTC ETF flows today"
+- "crypto liquidations today"
+
+SUPPLEMENTARY — analyst and social sentiment (last 24 hours):
+Search for recent posts or coverage from these accounts and sources. Use what you find to supplement the narrative — only reference something if you actually found it, never fabricate:
+- Kobeissi Letter markets crypto (kobeissiletter.com or x.com/KobeisseiLetter)
+- Eric Balchunas bitcoin ETF (x.com/EricBalchunas or Bloomberg ETF coverage)
+- aixbt_agent crypto analysis (x.com/aixbt_agent)
+- BullTheory crypto (x.com/BullTheoryio)
+- CoinDesk news today (coindesk.com)
+- Zero Hedge markets today (zerohedge.com)
+- Barchart crypto options today
+- Kalshi crypto prediction markets
+
+Only use what you actually find from searches. Do not attribute views to accounts unless you found a real source. Use these accounts to surface topics or narratives that might not appear in mainstream crypto news — contrarian takes, on-chain signals, ETF flow analysis, macro cross-asset reads.
 
 Here is the live market data to weave into your briefing:
 
@@ -96,7 +118,7 @@ Derivatives:
   - SOL: ${typeof fundingByAsset.SOL === 'number' ? (fundingByAsset.SOL * 100).toFixed(4) + '%' : 'N/A'}
   - XRP: ${typeof fundingByAsset.XRP === 'number' ? (fundingByAsset.XRP * 100).toFixed(4) + '%' : 'N/A'}
 
-Now search for today's news, then write the briefing paragraph only. No preamble.`;
+Now write the briefing paragraph only. No preamble. Lead with the dominant narrative from today's news and analyst sentiment, weaving in the live data as supporting context.`;
 }
 
 export async function POST() {
