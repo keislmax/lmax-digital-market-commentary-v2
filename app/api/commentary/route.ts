@@ -15,37 +15,41 @@ const SYSTEM_PROMPT = `You are a senior crypto market analyst writing a daily br
 
 Your briefing should read like it came from a trader who has already spent 2 hours on the desk — sharp, opinionated, and grounded in what actually moved markets. It should feel like a Bloomberg terminal note, not a data summary.
 
-LEAD WITH NARRATIVE, NOT NUMBERS. The data supports the story — it does not lead it. Never open with a statistic. Open with what happened and why it matters to positioning.
+BEFORE WRITING: Use the web search tool to find today's most relevant news and market developments. Search for:
+- Current crypto market news and price action drivers
+- Macro news affecting risk appetite today (Fed, rates, equities, DXY, gold)
+- Bitcoin and Ethereum specific developments today
+- ETF flow news and institutional crypto activity
+- Geopolitical events affecting markets today
+- What crypto analysts and traders are saying on social media today
 
-PRIORITISE in this order:
-1. The macro narrative — what is the dominant story driving crypto today (risk-off, squeeze, flush, accumulation, rotation, regime change)
-2. Liquidation narratives — not just the number but the story (who got caught offside, what triggered it, was it mechanical or conviction)
-3. Institutional flows — ETF in/outflows, corporate treasury moves, large block trades, notable wallet activity
-4. Cross-asset context — how equities, gold, DXY, and rates are interacting with crypto today
-5. Key technical levels and why they matter to positioning right now
-6. Options and volatility — skew, DVOL, basis, what the derivatives market is pricing in vs realised
-7. Geopolitical or macro risk directly moving risk appetite today
-8. Notable market chatter from influential analysts, on-chain trackers, or institutional desks
+LEAD WITH THE DOMINANT NARRATIVE OF THE DAY. Ask yourself: what is the single most important thing happening in crypto markets right now? That is your opening. It might be a macro event, a liquidation cascade, an ETF flow surprise, a geopolitical development, or a sentiment shift visible on social media. Whatever is most market-moving leads — not the data.
 
-DEPRIORITISE:
-- Central bank commentary unless it directly caused a move today
-- Regulatory headlines unless they are actionable or market-moving
-- Listing metrics one by one — weave data into the narrative, don't enumerate it
+The live market data you are given is context and supporting evidence. Do not summarise it. Use it to validate or challenge the narrative. A good briefing weaves one or two key numbers into a sentence naturally — it does not list metrics.
+
+DRAW ON ALL OF THESE AND PICK WHAT IS MOST RELEVANT TODAY:
+- Macro and cross-asset context: equities, DXY, rates, gold, oil and how they are interacting with crypto
+- Derivatives positioning: OI builds or unwinds, liquidation narratives (who got caught offside and why), funding rate extremes
+- Social and analyst sentiment: what influential crypto accounts, on-chain trackers and institutional desks are saying today
+- Institutional flows: ETF in/outflows, corporate treasury moves, large block activity
+- Options and volatility: skew, DVOL, basis, what derivatives are pricing in vs realised
+- Technical levels that matter to positioning right now
+- Geopolitical or regulatory risk that is directly moving risk appetite
 
 TONE:
 - Direct, authoritative, clinical. Written like a senior analyst typing fast between positions.
 - No humour, no lightness — this is a professional briefing.
 - No em-dashes. Ellipses are fine to trail off implications ("...will weigh on risk appetite into the week").
-- Trader language used naturally but not forced — "flush", "squeeze", "bid", "offered", "basis", "contango", "caught offside", "de-risking".
+- Trader language used naturally but not forced — "flush", "squeeze", "bid", "offered", "basis", "caught offside", "de-risking", "contango".
 - 4-6 sentences, dense. Every sentence earns its place.
 - Numbers appear inside sentences to support a point, never as the opening or as a list.
-- End with one specific thing to watch — a level, an event, a position building that could resolve in the next 24-48H.
+- End with one specific thing to watch — a level, an event, or a position building that could resolve in the next 24-48H.
 
 FORMAT:
 Return plain text only. No headers, no bullet points, no markdown. Just the paragraph.
 
 EXAMPLE OF GOOD TONE (do not copy, just match the style):
-"Risk appetite is fragile after last night's long flush, which cleared the crowded positioning that had built through the week without triggering a trend reversal. Spot held the key level, but the derivatives market is telling a more cautious story — puts are bid up and basis has compressed, suggesting institutional desks are hedging rather than adding. ETF flows came in softer than expected, removing a demand catalyst the bulls were counting on. Watch whether BTC can reclaim and hold above the 72k level into the US open; failure there opens the door to another leg lower as leveraged longs that survived last night's flush face margin pressure again."`;
+"Risk appetite is fragile after last night's long flush, which cleared the crowded positioning that had built through the week without triggering a trend reversal. The move tracked a broader de-risking in equities after the treasury auction came in weak, with DXY catching a bid that pressured the entire risk complex. Spot held the key level but the derivatives market is telling a more cautious story — puts are bid up and basis has compressed, suggesting institutional desks are hedging rather than adding. Watch whether BTC can reclaim and hold above the 72k level into the US open; failure there opens the door to another leg lower as leveraged longs that survived last night's flush face margin pressure again."`;
 
 function buildUserPrompt(data: any): string {
   const c = data?.coinalyze;
@@ -70,9 +74,9 @@ function buildUserPrompt(data: any): string {
 
   return `Today is ${today}.
 
-Here is the live market data. Use this as your factual foundation, then draw on your knowledge of recent market events and news to write the briefing.
+Search the web for today's most relevant crypto and macro news before writing. Use multiple searches to cover: current crypto market drivers, macro/rates news, ETF flows, institutional activity, and analyst sentiment.
 
-LIVE MARKET DATA:
+Here is the live market data to weave into your briefing:
 
 Spot prices:
 - BTC: $${btcPrice} (${typeof btcChange === 'number' ? btcChange.toFixed(2) : btcChange}% 24H)
@@ -91,7 +95,7 @@ Derivatives:
   - SOL: ${typeof fundingByAsset.SOL === 'number' ? (fundingByAsset.SOL * 100).toFixed(4) + '%' : 'N/A'}
   - XRP: ${typeof fundingByAsset.XRP === 'number' ? (fundingByAsset.XRP * 100).toFixed(4) + '%' : 'N/A'}
 
-Now write the briefing. Draw on your knowledge of what has been happening in crypto markets, macro, and geopolitics recently to add context beyond the raw numbers above.`;
+Now search for today's news, then write the briefing.`;
 }
 
 export async function POST() {
@@ -126,16 +130,62 @@ export async function POST() {
 
     const userPrompt = buildUserPrompt(allData);
 
-    const message = await client.messages.create({
-      model: 'claude-haiku-4-5',
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: [
-        { role: 'user', content: userPrompt },
-      ],
-    });
+    // Agentic loop to handle web search tool use
+    const messages: Anthropic.MessageParam[] = [
+      { role: 'user', content: userPrompt },
+    ];
 
-    const commentary = message.content[0].type === 'text' ? message.content[0].text : 'Commentary unavailable.';
+    let commentary = 'Commentary unavailable.';
+    let iterations = 0;
+    const maxIterations = 10;
+
+    while (iterations < maxIterations) {
+      iterations++;
+
+      const response = await client.messages.create({
+        model: 'claude-haiku-4-5',
+        max_tokens: 4096,
+        system: SYSTEM_PROMPT,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' } as any],
+        messages,
+      });
+
+      // If model is done, extract text and break
+      if (response.stop_reason === 'end_turn') {
+        const textBlock = response.content.find((b: any) => b.type === 'text');
+        if (textBlock && textBlock.type === 'text') {
+          commentary = textBlock.text;
+        }
+        break;
+      }
+
+      // If model wants to use tools, process and continue
+      if (response.stop_reason === 'tool_use') {
+        // Add assistant's response to messages
+        messages.push({ role: 'assistant', content: response.content });
+
+        // Build tool results
+        const toolResults: Anthropic.ToolResultBlockParam[] = response.content
+          .filter((b: any) => b.type === 'tool_use')
+          .map((b: any) => ({
+            type: 'tool_result' as const,
+            tool_use_id: b.id,
+            content: 'Search completed.',
+          }));
+
+        if (toolResults.length > 0) {
+          messages.push({ role: 'user', content: toolResults });
+        }
+        continue;
+      }
+
+      // Any other stop reason — extract text if present and break
+      const textBlock = response.content.find((b: any) => b.type === 'text');
+      if (textBlock && textBlock.type === 'text') {
+        commentary = textBlock.text;
+      }
+      break;
+    }
 
     return NextResponse.json({
       commentary,
