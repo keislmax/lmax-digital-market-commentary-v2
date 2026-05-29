@@ -57,13 +57,19 @@ TONE:
 - Write in neutral third-person analyst voice throughout. No first-person ("I", "my"). No second-person ("your"). Just "funding rates show...", "OI contracted...", "the market is pricing...".
 
 FORMAT:
-- Return plain text only. No headers, no bullet points, no markdown, no line breaks within the paragraph.
-- Do NOT open with any preamble such as "Based on my research", "Here is today's briefing", "Here is the briefing" or any similar phrase.
-- Write as one clean, unbroken paragraph with no internal line breaks or gaps.
-- Open directly with the market narrative — the very first word should be part of the story.
+You must return a valid JSON object with exactly two fields:
+{
+  "commentary": "the briefing paragraph as a single clean string with no line breaks",
+  "sources": [
+    { "title": "short source label", "url": "https://..." },
+    ...
+  ]
+}
 
-EXAMPLE OF GOOD TONE (do not copy, just match the style):
-"Risk appetite is fragile after last night's long flush, which cleared the crowded positioning that had built through the week without triggering a trend reversal. The move tracked a broader de-risking in equities after the treasury auction came in weak, with DXY catching a bid that pressured the entire risk complex. Spot held the key level but the derivatives market is telling a more cautious story — puts are bid up and basis has compressed, suggesting institutional desks are hedging rather than adding. Watch whether BTC can reclaim and hold above the 72k level into the US open; failure there opens the door to another leg lower as leveraged longs that survived last night's flush face margin pressure again."`;
+Rules:
+- "commentary" must be one clean unbroken paragraph. No line breaks. No preamble like "Based on my research" or "Here is the briefing". Open directly with the market narrative.
+- "sources" must only contain URLs you actually retrieved during your web searches. Maximum 5 sources. Only include sources that directly informed the briefing. Do not fabricate URLs.
+- Return raw JSON only. No markdown code fences, no explanation outside the JSON.`;
 
 function buildUserPrompt(data: any): string {
   const c = data?.coinalyze;
@@ -114,7 +120,7 @@ Derivatives:
   - SOL: ${typeof fundingByAsset.SOL === 'number' ? (fundingByAsset.SOL * 100).toFixed(4) + '%' : 'N/A'}
   - XRP: ${typeof fundingByAsset.XRP === 'number' ? (fundingByAsset.XRP * 100).toFixed(4) + '%' : 'N/A'}
 
-Now write the briefing paragraph only. No preamble. No first-person. Open directly with the market narrative.`;
+Now search for today's news, then return the JSON object as specified. No preamble. No markdown. Raw JSON only.`;
 }
 
 export async function POST() {
@@ -160,34 +166,43 @@ export async function POST() {
       messages: [{ role: 'user', content: userPrompt }],
     });
 
-    // Concatenate all text blocks, filter preamble, clean whitespace
-    const PREAMBLE_PATTERNS = [
-      "i'll search",
-      "i will search",
-      "let me search",
-      "based on my research",
-      "here is today",
-      "here is the briefing",
-      "here's today",
-      "here's the briefing",
-    ];
-
-    const textBlocks = response.content
+    // Extract all text blocks and join
+    const rawText = response.content
       .filter((b: any) => b.type === 'text')
       .map((b: any) => b.text.trim())
-      .filter((t: string) => {
-        const lower = t.toLowerCase();
-        return !PREAMBLE_PATTERNS.some(p => lower.startsWith(p));
-      });
-
-    const commentary = textBlocks
       .join(' ')
       .replace(/\n+/g, ' ')
       .replace(/\s+/g, ' ')
-      .trim() || 'Commentary unavailable.';
+      .trim();
+
+    // Parse JSON — strip markdown fences if present
+    let commentary = 'Commentary unavailable.';
+    let sources: { title: string; url: string }[] = [];
+
+    try {
+      const clean = rawText
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim();
+
+      // Find JSON object in the text
+      const jsonMatch = clean.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        commentary = parsed.commentary?.trim() || commentary;
+        sources = Array.isArray(parsed.sources) ? parsed.sources.slice(0, 5) : [];
+      }
+    } catch {
+      // If JSON parsing fails, use raw text as commentary
+      commentary = rawText
+        .replace(/\{[\s\S]*\}/, '')
+        .trim() || rawText;
+    }
 
     return NextResponse.json({
       commentary,
+      sources,
       generatedAt: Date.now(),
     });
   } catch (err: any) {
