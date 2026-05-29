@@ -131,60 +131,18 @@ export async function POST() {
 
     const userPrompt = buildUserPrompt(allData);
 
-    const messages: Anthropic.MessageParam[] = [
-      { role: 'user', content: userPrompt },
-    ];
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 4096,
+      system: SYSTEM_PROMPT,
+      tools: [{ type: 'web_search_20250305', name: 'web_search' } as any],
+      messages: [{ role: 'user', content: userPrompt }],
+    });
 
-    let commentary = 'Commentary unavailable.';
-    let iterations = 0;
-    const maxIterations = 10;
-
-    while (iterations < maxIterations) {
-      iterations++;
-
-      const response = await client.messages.create({
-        model: 'claude-haiku-4-5',
-        max_tokens: 4096,
-        system: SYSTEM_PROMPT,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' } as any],
-        messages,
-      });
-
-      // Always add assistant response to history
-      messages.push({ role: 'assistant', content: response.content });
-
-      if (response.stop_reason === 'end_turn') {
-        // Final response — extract the briefing text
-        const textBlock = response.content.find((b: any) => b.type === 'text');
-        if (textBlock && textBlock.type === 'text') {
-          commentary = textBlock.text.trim();
-        }
-        break;
-      }
-
-      if (response.stop_reason === 'tool_use') {
-        // Model is searching — build tool results and continue
-        const toolResults: Anthropic.ToolResultBlockParam[] = response.content
-          .filter((b: any) => b.type === 'tool_use')
-          .map((b: any) => ({
-            type: 'tool_result' as const,
-            tool_use_id: b.id,
-            content: 'Search completed.',
-          }));
-
-        if (toolResults.length > 0) {
-          messages.push({ role: 'user', content: toolResults });
-        }
-        continue;
-      }
-
-      // Any other stop reason — extract text if present and break
-      const textBlock = response.content.find((b: any) => b.type === 'text');
-      if (textBlock && textBlock.type === 'text') {
-        commentary = textBlock.text.trim();
-      }
-      break;
-    }
+    // Get the LAST text block — the actual briefing, not the preamble
+    const textBlocks = response.content.filter((b: any) => b.type === 'text');
+    const lastTextBlock = textBlocks[textBlocks.length - 1];
+    const commentary = lastTextBlock?.type === 'text' ? lastTextBlock.text.trim() : 'Commentary unavailable.';
 
     return NextResponse.json({
       commentary,
