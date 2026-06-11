@@ -55,7 +55,7 @@ async function getAuthToken(): Promise<{ token?: string; error?: string }> {
   const email = process.env.THEBLOCK_EMAIL;
   const apiKey = process.env.THEBLOCK_API_KEY_DATA;
   if (!email || !apiKey) {
-    return { error: "Missing THEBLOCK_EMAIL or THEBLOCK_API_KEY env vars" };
+    return { error: "Missing THEBLOCK_EMAIL or THEBLOCK_API_KEY_DATA env vars. EMAIL set: " + !!email + " KEY set: " + !!apiKey };
   }
   try {
     const res = await fetch(`${BASE}/v1/users/auth`, {
@@ -64,27 +64,26 @@ async function getAuthToken(): Promise<{ token?: string; error?: string }> {
       body: JSON.stringify({ email, apiKey }),
       cache: "no-store",
     });
-    const json = await res.json().catch(() => null);
+    const raw = await res.text();
+    let json: Record<string, unknown> | null = null;
+    try { json = JSON.parse(raw); } catch { json = null; }
     if (!res.ok) {
       return {
-        error: `Auth failed (HTTP ${res.status}): ${JSON.stringify(json).slice(0, 300)}`,
+        error: `Auth failed (HTTP ${res.status}). Raw response: ${raw.slice(0, 500)}. Email length: ${email.length}, Key length: ${apiKey.length}, Key prefix: ${apiKey.slice(0,6)}`,
       };
     }
-    // Handle the possible shapes the token might come back in
     const token =
       json?.token ??
-      json?.data?.token ??
-      json?.data?.accessToken ??
+      (json?.data as Record<string, unknown>)?.token ??
+      (json?.data as Record<string, unknown>)?.accessToken ??
       json?.accessToken ??
       null;
     if (!token) {
       return {
-        error: `Auth succeeded but no token found in response. Keys seen: ${Object.keys(
-          json?.data ?? json ?? {}
-        ).join(", ")}`,
+        error: `Auth succeeded but no token found. Full response: ${raw.slice(0, 500)}`,
       };
     }
-    return { token };
+    return { token: token as string };
   } catch (e) {
     return { error: `Auth request threw: ${String(e)}` };
   }
