@@ -334,14 +334,3 @@ export async function GET() {
     updatedAt: Date.now(),
   });
 }
-
-  return NextResponse.json({
-    coinalyze:  coinalyze.status  === 'fulfilled' ? coinalyze.value  : null,
-    deribit:    deribit.status    === 'fulfilled' ? deribit.value    : null,
-    feargreed:  feargreed.status  === 'fulfilled' ? feargreed.value  : null,
-    etf:        etf.status        === 'fulfilled' ? etf.value        : null,
-    prices:     prices.status     === 'fulfilled' ? prices.value     : null,
-    spotvolume: spotvolume.status === 'fulfilled' ? spotvolume.value : null,
-    updatedAt: Date.now(),
-  });
-}
