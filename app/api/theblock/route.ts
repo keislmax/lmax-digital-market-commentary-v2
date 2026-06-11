@@ -84,15 +84,6 @@ function flowMetric(chart: ParsedChart | null, historyPoints = 30) {
 function perSeriesMetric(chart: ParsedChart | null, historyPoints = 90) {
   if (!chart) return null;
   const out: Record<string, { latest: number | null; latestTs: number | null; sevenDaysAgo: number | null; thirtyDaysAgo: number | null; history: RawPoint[] }> = {};
-    string,
-    {
-      latest: number | null;
-      latestTs: number | null;
-      sevenDaysAgo: number | null;
-      thirtyDaysAgo: number | null;
-      history: RawPoint[];
-    }
-  > = {};
   for (const [name, pts] of Object.entries(chart.series)) {
     const last = latest(pts);
     out[name] = {
