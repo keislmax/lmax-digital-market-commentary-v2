@@ -124,17 +124,7 @@ export async function GET() {
     return NextResponse.json({ ok: false, stage: "auth", error: auth.error });
   }
 
-  const catalogue: Record
-    string,
-    {
-      title?: string;
-      slug?: string;
-      type?: string;
-      lastUpdated?: string;
-      categories?: string[];
-      matchedKeywords: string[];
-    }
-  > = {};
+  const catalogue: Record<string, { title?: string; slug?: string; type?: string; lastUpdated?: string; categories?: string[]; matchedKeywords: string[]; }> = {};
   const perKeyword: Record<string, number | string> = {};
 
   for (const kw of KEYWORDS) {
