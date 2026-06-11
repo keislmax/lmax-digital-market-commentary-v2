@@ -17,7 +17,7 @@ type ChartAsset = typeof CHART_ASSETS[number];
 const BLOCK_ASSETS = ['BTC', 'ETH'] as const;
 type BlockAsset = typeof BLOCK_ASSETS[number];
 
-const EXCHANGES = 'Binance · Bybit · OKX · Deribit · BitMEX · Kraken';
+const LIQ_COVERAGE = 'BTC/ETH/SOL/XRP, major perp contracts: Binance, Bybit, OKX, Deribit, BitMEX, Kraken';
 
 function fmtUSD(v: number) {
   const abs = Math.abs(v);
@@ -219,7 +219,7 @@ function AssetTabs({ active, onChange }: { active: ChartAsset; onChange: (a: Cha
   );
 }
 
-function ChartCard({ label, source, snapshotValue, sub, change, chartsByAsset, valueColor, color, formatValue, timeframes = TIMEFRAMES, footer = EXCHANGES }: {
+function ChartCard({ label, source, snapshotValue, sub, change, chartsByAsset, valueColor, color, formatValue, timeframes = TIMEFRAMES, footer }: {
   label: string; source?: string; snapshotValue: string; sub?: string; change?: number;
   chartsByAsset?: Record<string, Record<string, any[]>>;
   valueColor?: string; color?: string; formatValue?: (v: number) => string;
@@ -278,7 +278,7 @@ function ChartCard({ label, source, snapshotValue, sub, change, chartsByAsset, v
         formatValue={formatValue}
         onHoverChange={(v, l) => v !== null ? setHovered({ value: v, label: l || '' }) : setHovered(null)}
       />
-      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 6, letterSpacing: '0.02em' }}>{footer}</div>
+      {footer && <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 6, letterSpacing: '0.02em' }}>{footer}</div>}
     </div>
   );
 }
@@ -820,14 +820,6 @@ export default function Dashboard() {
   const prices = pricesData?.prices;
   const spotVolumeCharts = buildSpotVolumeCharts(data?.spotvolume);
 
-  const longLiqs = c?.liquidations?.longs24h ?? 0;
-  const shortLiqs = c?.liquidations?.shorts24h ?? 0;
-  const liqInsight = shortLiqs > longLiqs * 3
-    ? { text: 'Short squeeze, not deleveraging', type: 'bullish' as const }
-    : longLiqs > shortLiqs * 3
-    ? { text: 'Long flush, deleveraging event', type: 'bearish' as const }
-    : { text: 'Mixed, no dominant direction', type: 'neutral' as const };
-
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       <header style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 50 }}>
@@ -876,51 +868,23 @@ export default function Dashboard() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 12 }}>
           <BlockOICard tb={tb} loading={loading} />
           <BlockFundingCard tb={tb} loading={loading} />
-          <div className="card" style={{ padding: '14px 16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <div style={CARD_TITLE_STYLE}>Liquidations 24H</div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Coinalyze</div>
-            </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)', lineHeight: 1.1, marginBottom: 4 }}>
-              {loading ? '...' : formatUSD(c?.liquidations?.total24h || 0)}
-            </div>
-            {c?.liquidations && (
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                Longs: {formatUSD(c.liquidations.longs24h)} · Shorts: {formatUSD(c.liquidations.shorts24h)}
-              </div>
-            )}
-            {!loading && <InsightPill text={liqInsight.text} type={liqInsight.type} />}
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 8, display: 'flex', justifyContent: 'space-between' }}>
-              <span>Total Market Volume 24H</span>
-              <span style={{ fontWeight: 600, color: 'var(--text)' }}>{pricesData?.globalVolume24h ? formatUSD(pricesData.globalVolume24h) : '...'}</span>
-            </div>
-          </div>
+          <BlockVolCard tb={tb} loading={loading} />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
-          <BlockVolCard tb={tb} loading={loading} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <BlockETFCard tb={tb} loading={loading} />
           <BlockMacroCard tb={tb} loading={loading} />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <ChartCard
-            label="Open Interest (Intraday)" source="Coinalyze"
-            snapshotValue={loading ? '...' : formatUSD(c?.openInterest?.current || 0)}
-            change={c?.openInterest?.change24h}
-            chartsByAsset={c?.openInterest?.chartsByAsset}
-            color="#2563eb" formatValue={fmtUSD}
-          />
-          <ChartCard
             label="Liquidations" source="Coinalyze"
             snapshotValue={loading ? '...' : formatUSD(c?.liquidations?.total24h || 0)}
             sub={c?.liquidations ? `Longs: ${formatUSD(c.liquidations.longs24h)} · Shorts: ${formatUSD(c.liquidations.shorts24h)}` : undefined}
             chartsByAsset={c?.liquidations?.chartsByAsset}
             color="#dc2626" formatValue={fmtUSD}
+            footer={LIQ_COVERAGE}
           />
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <ChartCard
             label="Spot Volume" source="CoinGecko"
             snapshotValue="..."
@@ -928,15 +892,6 @@ export default function Dashboard() {
             color="#7c3aed" formatValue={fmtUSD}
             timeframes={SPOT_TIMEFRAMES}
             footer="BTC, ETH, SOL, XRP spot volume, all exchanges"
-          />
-          <ChartCard
-            label="Funding Rate (8H)" source="Coinalyze"
-            snapshotValue={!loading && c?.fundingRate?.current !== 0 ? (c?.fundingRate?.current * 100).toFixed(4) + '%' : '...'}
-            sub={c?.fundingRate?.current > 0 ? 'Longs paying shorts' : c?.fundingRate?.current < 0 ? 'Shorts paying longs' : 'Avg per 8-hour settlement'}
-            chartsByAsset={c?.fundingRate?.chartsByAsset}
-            valueColor={!c?.fundingRate?.current ? 'var(--text)' : c?.fundingRate?.current > 0 ? 'var(--green)' : 'var(--red)'}
-            color={!c?.fundingRate?.current ? '#6b6860' : c?.fundingRate?.current > 0 ? 'var(--green)' : '#dc2626'}
-            formatValue={v => (v * 100).toFixed(4) + '%'}
           />
         </div>
 
@@ -946,7 +901,7 @@ export default function Dashboard() {
         </div>
 
         <div style={{ textAlign: 'center', padding: '12px 0 4px', fontSize: 11, color: 'var(--text-muted)' }}>
-          Derivatives, Options, ETF & Stablecoins: The Block · Liquidations & Intraday: Coinalyze ({EXCHANGES}) · Prices & Global: CoinGecko · Skew & Put/Call: Deribit · Sentiment: Alternative.me
+          Derivatives, Options, ETF & Stablecoins: The Block · Liquidations: Coinalyze · Prices & Global: CoinGecko · Skew & Basis: Deribit · Sentiment: Alternative.me
         </div>
       </main>
     </div>
