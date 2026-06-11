@@ -194,12 +194,3 @@ export async function GET(request: Request) {
   );
 
   return NextResponse.json({ ok: true, totalUniqueCharts: charts.length, perKeyword, charts });
-}
-
-  return NextResponse.json({
-    ok: true,
-    totalUniqueCharts: charts.length,
-    perKeyword,
-    charts,
-  });
-}
