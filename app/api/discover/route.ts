@@ -126,12 +126,45 @@ async function searchCharts(
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await getAuthToken();
   if (!auth.token) {
     return NextResponse.json({ ok: false, stage: "auth", error: auth.error });
   }
 
+  const { searchParams } = new URL(request.url);
+  const slug = searchParams.get("slug");
+
+  // Slug mode: fetch a single chart and return its raw payload
+  if (slug) {
+    try {
+      const res = await fetch(
+        `${BASE}/v1/charts/?slug=${encodeURIComponent(slug)}`,
+        {
+          headers: {
+            "x-auth-token": auth.token,
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36",
+            Accept: "application/json",
+          },
+          cache: "no-store",
+        }
+      );
+      const raw = await res.text();
+      let json: unknown = null;
+      try { json = JSON.parse(raw); } catch { json = null; }
+      return NextResponse.json({
+        ok: res.ok,
+        status: res.status,
+        slug,
+        payload: json ?? raw.slice(0, 2000),
+      });
+    } catch (e) {
+      return NextResponse.json({ ok: false, slug, error: String(e) });
+    }
+  }
+
+  // Default mode: keyword discovery (unchanged)
   const catalogue: Record<string, { title?: string; slug?: string; type?: string; lastUpdated?: string; categories?: string[]; matchedKeywords: string[]; }> = {};
   const perKeyword: Record<string, number | string> = {};
 
@@ -146,21 +179,22 @@ export async function GET() {
           slug: r.slug,
           type: r.type,
           lastUpdated: r.lastUpdated,
-          categories: (r.categories ?? [])
-            .map((c) => c?.name)
-            .filter(Boolean) as string[],
+          categories: (r.categories ?? []).map((c) => c?.name).filter(Boolean) as string[],
           matchedKeywords: [kw],
         };
       } else {
         catalogue[key].matchedKeywords.push(kw);
       }
     }
-    await sleep(400); // be polite, avoid rate limits
+    await sleep(400);
   }
 
   const charts = Object.values(catalogue).sort((a, b) =>
     (a.title ?? "").localeCompare(b.title ?? "")
   );
+
+  return NextResponse.json({ ok: true, totalUniqueCharts: charts.length, perKeyword, charts });
+}
 
   return NextResponse.json({
     ok: true,
