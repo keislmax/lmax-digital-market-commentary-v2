@@ -83,7 +83,7 @@ function flowMetric(chart: ParsedChart | null, historyPoints = 30) {
 // put/call by currency). Returns latest plus 7d ago per series.
 function perSeriesMetric(chart: ParsedChart | null, historyPoints = 90) {
   if (!chart) return null;
-  const out: Record
+  const out: Record<string, { latest: number | null; latestTs: number | null; sevenDaysAgo: number | null; thirtyDaysAgo: number | null; history: RawPoint[] }> = {};
     string,
     {
       latest: number | null;
