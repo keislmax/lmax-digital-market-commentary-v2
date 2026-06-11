@@ -52,15 +52,32 @@ type ChartResult = {
 };
 
 async function getAuthToken(): Promise<{ token?: string; error?: string }> {
-  const email = process.env.THEBLOCK_EMAIL;
-  const apiKey = process.env.THEBLOCK_API_KEY_DATA;
+  const email = (process.env.THEBLOCK_EMAIL ?? "").trim();
+  const apiKey = (process.env.THEBLOCK_API_KEY_DATA ?? "").trim();
   if (!email || !apiKey) {
-    return { error: "Missing THEBLOCK_EMAIL or THEBLOCK_API_KEY_DATA env vars. EMAIL set: " + !!email + " KEY set: " + !!apiKey };
+    return { error: "Missing THEBLOCK_EMAIL or THEBLOCK_API_KEY_DATA env vars" };
   }
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36",
+    Accept: "application/json",
+  };
+
+  // Sanity check 1: unauthenticated ping
+  let pingStatus = "unreached";
+  try {
+    const ping = await fetch(`${BASE}/ping`, { headers, cache: "no-store" });
+    pingStatus = `HTTP ${ping.status}`;
+  } catch (e) {
+    pingStatus = `threw: ${String(e)}`;
+  }
+
   try {
     const res = await fetch(`${BASE}/v1/users/auth`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ email, apiKey }),
       cache: "no-store",
     });
@@ -69,7 +86,7 @@ async function getAuthToken(): Promise<{ token?: string; error?: string }> {
     try { json = JSON.parse(raw); } catch { json = null; }
     if (!res.ok) {
       return {
-        error: `Auth failed (HTTP ${res.status}). Raw response: ${raw.slice(0, 500)}. Email length: ${email.length}, Key length: ${apiKey.length}, Key prefix: ${apiKey.slice(0,6)}`,
+        error: `Auth failed (HTTP ${res.status}). Ping: ${pingStatus}. Raw: ${raw.slice(0, 300)}. TrimmedEmailLen: ${email.length}, TrimmedKeyLen: ${apiKey.length}`,
       };
     }
     const token =
@@ -79,13 +96,11 @@ async function getAuthToken(): Promise<{ token?: string; error?: string }> {
       json?.accessToken ??
       null;
     if (!token) {
-      return {
-        error: `Auth succeeded but no token found. Full response: ${raw.slice(0, 500)}`,
-      };
+      return { error: `Auth OK but no token found. Full response: ${raw.slice(0, 500)}` };
     }
     return { token: token as string };
   } catch (e) {
-    return { error: `Auth request threw: ${String(e)}` };
+    return { error: `Auth request threw: ${String(e)}. Ping: ${pingStatus}` };
   }
 }
 
