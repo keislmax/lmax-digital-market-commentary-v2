@@ -68,9 +68,9 @@ export async function POST(req: Request) {
 
     // ---- Section 3: Options ----
     const btcIvBtc7 = tb?.options?.ivBtc?.series?.['ATM 7']?.latest ?? null;
-    const btcIvBtc7rv = tb?.options?.realizedVolBtc?.series?.['Annualized Volatility']?.latest ?? null;
+    const btcIvBtc7rv = null;
     const btcIvBtc30 = tb?.options?.ivBtc?.series?.['ATM 30']?.latest ?? null;
-    const btcIvBtc30rv = tb?.options?.realizedVolBtc?.series?.['Annualized Volatility']?.sevenDaysAgo ?? null;
+    const btcIvBtc30rv = tb?.options?.realizedVolBtc?.series?.['Annualized Volatility']?.latest ?? null;
     const ethIvEth7 = tb?.options?.ivEth?.series?.['ATM 7']?.latest ?? null;
     const ethIvEth30 = tb?.options?.ivEth?.series?.['ATM 30']?.latest ?? null;
     const optOiBtc = tb?.options?.oiBtc?.latest ?? null;
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
     const etfRows = [
       { asset: 'BTC', flow: tb?.etf?.flowsBtc?.latestFlow ?? null, aum: tb?.etf?.aumBtc?.latest ?? null, aum30d: tb?.etf?.aumBtc?.thirtyDaysAgo ?? null },
       { asset: 'ETH', flow: tb?.etf?.flowsEth?.latestFlow ?? null, aum: tb?.etf?.aumEth?.latest ?? null, aum30d: tb?.etf?.aumEth?.thirtyDaysAgo ?? null },
-      { asset: 'SOL', flow: etfFarside?.sol?.totalFlow ?? null, aum: null, aum30d: null },
+      { asset: 'SOL', flow: typeof etfFarside?.sol?.latest?.total === 'number' ? etfFarside.sol.latest.total * 1e6 : null, aum: null, aum30d: null },
       { asset: 'HYPE', flow: tb?.etf?.flowsHype?.latestFlow ?? null, aum: null, aum30d: null },
     ];
     const strategyHoldings = tb?.strategy?.series?.['MicroStrategy Bitcoin Holdings']?.latest ?? null;
