@@ -203,9 +203,6 @@ const SLUGS = {
   strategyHoldings: "microstrategy-bitcoin-holdings",
   rwaTvl: "total-value-locked-rwa-by-protocol",
   btcEthFuturesVolume: "btc-and-eth-futures-volume-7dma",
-  cmeCotBtc: "net-positions-of-cme-bitcoin-futures-by-trader-category-weekly",
-  cmeCotEth: "net-positions-of-cme-ether-futures-by-trader-category",
-  futuresOiByAsset: "futures-open-interest-by-asset",
 } as const;
 
 function summedMetric(chart: ParsedChart | null, historyPoints = 90) {
@@ -330,11 +327,6 @@ export async function buildTheBlockData() {
     strategy: perSeriesMetric(charts[SLUGS.strategyHoldings], 90),
     rwa: summedMetric(charts[SLUGS.rwaTvl]),
     btcEthFuturesVolume: perSeriesMetric(charts[SLUGS.btcEthFuturesVolume], 90),
-    cmeCot: {
-      btc: perSeriesMetric(charts[SLUGS.cmeCotBtc], 52),
-      eth: perSeriesMetric(charts[SLUGS.cmeCotEth], 52),
-    },
-    futuresOiByAsset: perSeriesMetric(charts[SLUGS.futuresOiByAsset], 90),
     news: news.articles,
     errors,
     updatedAt: Date.now(),
