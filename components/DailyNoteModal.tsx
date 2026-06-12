@@ -215,7 +215,7 @@ function buildHTML(note: DailyNoteData): string {
       </td>
     </tr>
   </table>
-  <p style="font-size:10px;color:#9ca3af;margin:14px 0 0">Funding BTC/ETH: The Block (7DMA, median of active exchanges). Funding SOL/XRP: LMAX calculation from Coinalyze daily rates, 7-day average annualised. Realised vol: LMAX calculation from CoinGecko daily closes. ETF flows: The Block (SOL: Farside). Liquidations: Coinalyze, BTC/ETH/SOL/XRP major perp contracts.</p>
+  <p style="font-size:10px;color:#9ca3af;margin:14px 0 0">Funding BTC/ETH: The Block (7DMA, median of active exchanges). Funding SOL/XRP/HYPE: LMAX calculation from Coinalyze daily rates, 7-day average annualised.
 </div>`;
 }
 
