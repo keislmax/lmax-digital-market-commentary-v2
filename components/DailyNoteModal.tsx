@@ -212,3 +212,123 @@ function buildHTML(note: DailyNoteData): string {
   <p style="font-size:10px;color:#9ca3af;margin:14px 0 0">Funding BTC/ETH: The Block (7DMA, median of active exchanges). Funding SOL/XRP/HYPE: LMAX calculation from Coinalyze daily rates, 7-day average annualised.</p>
 </div>`;
 }
+export default function DailyNoteModal({ data, onClose }: { data: any; onClose: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [note, setNote] = useState<DailyNoteData | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const generate = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/dailynote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      setNote(json);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copy = async () => {
+    if (!note) return;
+    const html = buildHTML(note);
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }) }),
+      ]);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      await navigator.clipboard.writeText(html);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 100,
+      background: 'rgba(0,0,0,0.45)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }} onClick={onClose}>
+      <div style={{
+        background: '#fff', borderRadius: 10,
+        width: '92vw', maxWidth: 980,
+        maxHeight: '90vh', overflow: 'hidden',
+        display: 'flex', flexDirection: 'column',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+      }} onClick={e => e.stopPropagation()}>
+
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 20px', borderBottom: '1px solid #e5e7eb',
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1917' }}>Daily Note</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {!note && !loading && (
+              <button onClick={generate} style={{
+                padding: '6px 16px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                background: '#1a1917', color: '#fff', border: 'none', cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}>Generate</button>
+            )}
+            {note && (
+              <button onClick={copy} style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 16px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                background: copied ? '#166534' : '#2563eb', color: '#fff',
+                border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+                {copied ? <Check size={13} /> : <Copy size={13} />}
+                {copied ? 'Copied!' : 'Copy for Outlook'}
+              </button>
+            )}
+            {note && (
+              <button onClick={generate} style={{
+                padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                background: 'var(--surface2)', color: '#374151',
+                border: '1px solid #e5e7eb', cursor: 'pointer', fontFamily: 'inherit',
+              }}>Refresh</button>
+            )}
+            <button onClick={onClose} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 30, height: 30, borderRadius: 6,
+              background: 'var(--surface2)', border: 'none', cursor: 'pointer',
+            }}><X size={14} /></button>
+          </div>
+        </div>
+
+        <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
+          {!note && !loading && !error && (
+            <div style={{ textAlign: 'center', color: '#6b7280', fontSize: 13, padding: '40px 0' }}>
+              Click Generate to build today's note from live data.
+            </div>
+          )}
+          {loading && (
+            <div style={{ textAlign: 'center', color: '#6b7280', fontSize: 13, padding: '40px 0' }}>
+              <Loader2 size={18} style={{ display: 'block', margin: '0 auto 8px', animation: 'spin 1s linear infinite' }} />
+              Building note...
+            </div>
+          )}
+          {error && (
+            <div style={{ color: '#991b1b', fontSize: 13, padding: '16px', background: '#fee2e2', borderRadius: 6 }}>
+              Error: {error}
+            </div>
+          )}
+          {note && (
+            <div dangerouslySetInnerHTML={{ __html: buildHTML(note) }} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
