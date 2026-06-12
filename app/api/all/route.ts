@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
 import { buildTheBlockData } from '@/lib/theblock';
 
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL!,
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
@@ -232,24 +235,23 @@ async function calcPutCallRatio(currency: string): Promise<{ ratio: number | nul
 async function getDeribit() {
   try {
     const now = Date.now();
-    const [btcCharts, ethCharts, btcSkew, ethSkew, btcBasis, ethBasis, btcTermStructure, btcPutCall] = await Promise.all([
-      Promise.all(['24h','7d','30d','90d','1y'].map((tf, i) => {
-        const ms = [86400000, 7*86400000, 30*86400000, 90*86400000, 365*86400000][i];
-        const res = [3600, 3600, 86400, 86400, 86400][i];
-        return fetchDeribit('get_volatility_index_data', { currency: 'BTC', start_timestamp: String(now - ms), end_timestamp: String(now), resolution: String(res) });
-      })),
-      Promise.all(['24h','7d','30d','90d','1y'].map((tf, i) => {
-        const ms = [86400000, 7*86400000, 30*86400000, 90*86400000, 365*86400000][i];
-        const res = [3600, 3600, 86400, 86400, 86400][i];
-        return fetchDeribit('get_volatility_index_data', { currency: 'ETH', start_timestamp: String(now - ms), end_timestamp: String(now), resolution: String(res) });
-      })),
-      calcSkew('BTC'),
-      calcSkew('ETH'),
-      calcBasis('BTC'),
-      calcBasis('ETH'),
-      calcVolTermStructure('BTC'),
-      calcPutCallRatio('BTC'),
-    ]);
+    const [btcCharts, ethCharts, btcSkew, ethSkew, btcBasis, ethBasis, btcPutCall] = await Promise.all([
+  Promise.all(['24h','7d','30d','90d','1y'].map((tf, i) => {
+    const ms = [86400000, 7*86400000, 30*86400000, 90*86400000, 365*86400000][i];
+    const res = [3600, 3600, 86400, 86400, 86400][i];
+    return fetchDeribit('get_volatility_index_data', { currency: 'BTC', start_timestamp: String(now - ms), end_timestamp: String(now), resolution: String(res) });
+  })),
+  Promise.all(['24h','7d','30d','90d','1y'].map((tf, i) => {
+    const ms = [86400000, 7*86400000, 30*86400000, 90*86400000, 365*86400000][i];
+    const res = [3600, 3600, 86400, 86400, 86400][i];
+    return fetchDeribit('get_volatility_index_data', { currency: 'ETH', start_timestamp: String(now - ms), end_timestamp: String(now), resolution: String(res) });
+  })),
+  calcSkew('BTC'),
+  calcSkew('ETH'),
+  calcBasis('BTC'),
+  calcBasis('ETH'),
+  calcPutCallRatio('BTC'),
+]);
     const toChart = (d: any) => (d?.data || []).map((p: number[]) => ({ t: Math.floor(p[0] / 1000), v: p[4] }));
     const tfs = ['24h','7d','30d','90d','1y'];
     const btcChartsByTf: Record<string, any[]> = {};
@@ -267,7 +269,6 @@ async function getDeribit() {
       },
       basis: btcBasis,
       ethBasis,
-      termStructure: btcTermStructure,
       putCallRatio: btcPutCall,
       skewDebug: { btc: btcSkew, eth: ethSkew },
       updatedAt: Date.now(),
