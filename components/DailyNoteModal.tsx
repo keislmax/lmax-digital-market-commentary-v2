@@ -88,6 +88,15 @@ function buildHTML(note: DailyNoteData): string {
 <div style="font-family:Arial,sans-serif;max-width:600px;color:#1a1917">
   <p style="font-size:13px;color:#6b7280;margin:0 0 16px">${dateStr} · LMAX Digital Market Data</p>
 
+  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 0 4px;margin-bottom:4px">Crypto Market Overview</div>
+  <ul style="margin:0 0 20px 0;padding-left:20px;font-size:12px;color:#1a1917;line-height:2">
+    <li>&nbsp;</li>
+    <li>&nbsp;</li>
+    <li>&nbsp;</li>
+  </ul>
+
+  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b7280;padding:0 0 8px;border-bottom:1px solid #e5e7eb;margin-bottom:16px">Copy-Pasted Data</div>
+
   <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 10px 4px">Spot Performance</div>
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:4px">
     <tr>
@@ -194,6 +203,18 @@ function buildHTML(note: DailyNoteData): string {
       <td style="padding:4px 10px;font-size:12px;text-align:right;font-weight:600">${etf.strategyHoldings != null ? etf.strategyHoldings.toLocaleString('en-US') + ' BTC' : '—'}</td>
     </tr>
   </table>
+
+  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 0 4px;margin-top:20px;margin-bottom:4px">Chatter / Market Sentiment</div>
+  <ul style="margin:0 0 20px 0;padding-left:20px;font-size:12px;color:#1a1917;line-height:2">
+    <li>&nbsp;</li>
+    <li>&nbsp;</li>
+    <li>&nbsp;</li>
+  </ul>
+
+  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 0 4px;margin-bottom:4px">Agent Thoughts</div>
+  <ul style="margin:0 0 20px 0;padding-left:20px;font-size:12px;color:#1a1917;line-height:2">
+    <li>&nbsp;</li>
+  </ul>
 
   <p style="font-size:10px;color:#9ca3af;margin:14px 0 0">Funding BTC/ETH: The Block (7DMA, median of active exchanges). Funding SOL/XRP/HYPE: LMAX calculation from Coinalyze daily rates, 7-day average annualised.</p>
 </div>`;
