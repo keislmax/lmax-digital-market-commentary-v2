@@ -201,8 +201,8 @@ function buildHTML(note: DailyNoteData): string {
           </tr>
           ${etfRowsHTML}
         </table>
-        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-top:8px">
-          <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:8px 0 4px">Strategy</div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:10px 10px 4px">Strategy</div>
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-top:4px">
           <tr>
             <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">Value of Holdings</td>
             <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmtUSD(etf.strategyValue)}</td>
