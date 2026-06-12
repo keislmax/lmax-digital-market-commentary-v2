@@ -3,39 +3,72 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
-function fmt(v: number | null | undefined, decimals = 2): string {
-  if (v == null) return '—';
-  return v.toFixed(decimals);
-}
-function fmtUSD(v: number | null | undefined): string {
-  if (v == null) return '—';
-  const abs = Math.abs(v);
-  if (abs >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B';
-  if (abs >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
-  if (abs >= 1e3) return '$' + (v / 1e3).toFixed(1) + 'K';
-  return '$' + v.toFixed(2);
-}
-function fmtPct(v: number | null | undefined): string {
-  if (v == null) return '—';
-  return (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
-}
-function fmtFlow(v: number | null | undefined): string {
-  if (v == null) return '—';
-  const s = fmtUSD(Math.abs(v));
-  return v >= 0 ? '+' + s : '-' + s;
-}
+const COINGECKO_KEY = process.env.COINGECKO_API_KEY;
+
 function pctChange(latest?: number | null, prev?: number | null): number | null {
   if (typeof latest !== 'number' || typeof prev !== 'number' || prev === 0) return null;
   return ((latest - prev) / Math.abs(prev)) * 100;
 }
 
+// Annualised realized volatility from daily closes:
+// stdev of daily log returns over the window, scaled by sqrt(365), in %.
+function realizedVol(closes: number[], windowDays: number): number | null {
+  if (closes.length < windowDays + 1) return null;
+  const slice = closes.slice(-(windowDays + 1));
+  const returns: number[] = [];
+  for (let i = 1; i < slice.length; i++) {
+    if (slice[i - 1] > 0 && slice[i] > 0) returns.push(Math.log(slice[i] / slice[i - 1]));
+  }
+  if (returns.length < 2) return null;
+  const mean = returns.reduce((s, v) => s + v, 0) / returns.length;
+  const variance = returns.reduce((s, v) => s + (v - mean) ** 2, 0) / (returns.length - 1);
+  return Math.sqrt(variance) * Math.sqrt(365) * 100;
+}
+
+async function fetchDailyCloses(coinId: string): Promise<number[]> {
+  try {
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=35&interval=daily&x_cg_demo_api_key=${COINGECKO_KEY}`,
+      { next: { revalidate: 3600 } }
+    );
+    if (!res.ok) return [];
+    const json = await res.json();
+    const prices: [number, number][] = json?.prices || [];
+    return prices.map(p => p[1]).filter(v => typeof v === 'number' && v > 0);
+  } catch { return []; }
+}
+
+// SOL/XRP funding from Coinalyze daily history: mean of last 7 daily
+// rates annualised (x3 settlements x365), and the prior week's mean.
+function coinalyzeFundingApy(points: { t: number; v: number }[] | undefined) {
+  const pts = (points || []).filter(p => typeof p?.v === 'number');
+  if (pts.length < 8) return { today: null as number | null, sevenDaysAgo: null as number | null };
+  const sorted = [...pts].sort((a, b) => a.t - b.t);
+  const mean = (arr: { v: number }[]) => arr.reduce((s, p) => s + p.v, 0) / arr.length;
+  const last7 = sorted.slice(-7);
+  const prev7 = sorted.slice(-14, -7);
+  const today = last7.length ? mean(last7) * 3 * 365 * 100 : null;
+  const sevenDaysAgo = prev7.length >= 4 ? mean(prev7) * 3 * 365 * 100 : null;
+  return { today, sevenDaysAgo };
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { prices: priceMap, theblock: tb, coinalyze: c, etf: etfFarside, deribit: d } = body;
+    const { prices: priceMap, theblock: tb, coinalyze: c, etf: etfFarside } = body;
 
     const prices = priceMap?.prices || {};
     const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP', 'HYPE'] as const;
+
+    // ---- Computed realized vols (CoinGecko daily closes) ----
+    const [btcCloses, ethCloses] = await Promise.all([
+      fetchDailyCloses('bitcoin'),
+      fetchDailyCloses('ethereum'),
+    ]);
+    const btcRv7 = realizedVol(btcCloses, 7);
+    const btcRv30 = realizedVol(btcCloses, 30);
+    const ethRv7 = realizedVol(ethCloses, 7);
+    const ethRv30 = realizedVol(ethCloses, 30);
 
     // ---- Section 1: Spot performance ----
     const spotRows = ASSETS.map(a => {
@@ -53,26 +86,25 @@ export async function POST(req: Request) {
     const btcDom = priceMap?.btcDominance ?? null;
 
     // ---- Section 2: Funding, liquidation and leverage ----
-    const fundingRows = ASSETS.map(a => {
-      const lower = a.toLowerCase() as 'btc' | 'eth' | 'sol' | 'xrp' | 'hype';
-      const m = tb?.funding?.[lower];
-      return {
-        asset: a,
-        today: m?.headline ?? null,
-        sevenDaysAgo: m?.headline7dAgo ?? null,
-      };
-    });
+    const solFunding = coinalyzeFundingApy(c?.fundingRate?.chartsByAsset?.SOL?.['30d']);
+    const xrpFunding = coinalyzeFundingApy(c?.fundingRate?.chartsByAsset?.XRP?.['30d']);
+
+    const fundingRows = [
+      { asset: 'BTC', today: tb?.funding?.btc?.headline ?? null, sevenDaysAgo: tb?.funding?.btc?.headline7dAgo ?? null, source: 'block' },
+      { asset: 'ETH', today: tb?.funding?.eth?.headline ?? null, sevenDaysAgo: tb?.funding?.eth?.headline7dAgo ?? null, source: 'block' },
+      { asset: 'SOL', today: solFunding.today, sevenDaysAgo: solFunding.sevenDaysAgo, source: 'coinalyze' },
+      { asset: 'XRP', today: xrpFunding.today, sevenDaysAgo: xrpFunding.sevenDaysAgo, source: 'coinalyze' },
+      { asset: 'HYPE', today: null, sevenDaysAgo: null, source: 'none' },
+    ];
     const totalLiqs = c?.liquidations?.total24h ?? null;
     const longsLiqs = c?.liquidations?.longs24h ?? null;
     const shortsLiqs = c?.liquidations?.shorts24h ?? null;
 
     // ---- Section 3: Options ----
-    const btcIvBtc7 = tb?.options?.ivBtc?.series?.['ATM 7']?.latest ?? null;
-    const btcIvBtc7rv = null;
-    const btcIvBtc30 = tb?.options?.ivBtc?.series?.['ATM 30']?.latest ?? null;
-    const btcIvBtc30rv = tb?.options?.realizedVolBtc?.series?.['Annualized Volatility']?.latest ?? null;
-    const ethIvEth7 = tb?.options?.ivEth?.series?.['ATM 7']?.latest ?? null;
-    const ethIvEth30 = tb?.options?.ivEth?.series?.['ATM 30']?.latest ?? null;
+    const btcIv7 = tb?.options?.ivBtc?.series?.['ATM 7']?.latest ?? null;
+    const btcIv30 = tb?.options?.ivBtc?.series?.['ATM 30']?.latest ?? null;
+    const ethIv7 = tb?.options?.ivEth?.series?.['ATM 7']?.latest ?? null;
+    const ethIv30 = tb?.options?.ivEth?.series?.['ATM 30']?.latest ?? null;
     const optOiBtc = tb?.options?.oiBtc?.latest ?? null;
     const optOiEth = tb?.options?.oiEth?.latest ?? null;
 
@@ -88,7 +120,6 @@ export async function POST(req: Request) {
     const btcPrice = prices['BTC']?.price ?? null;
     const strategyValue = strategyHoldings != null && btcPrice != null ? strategyHoldings * btcPrice : null;
 
-    // ---- Build date string ----
     const dateStr = new Date().toLocaleDateString('en-SG', {
       timeZone: 'Asia/Singapore',
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
@@ -98,7 +129,7 @@ export async function POST(req: Request) {
       dateStr,
       spot: { rows: spotRows, stablecoins, rwa, btcDominance: btcDom },
       funding: { rows: fundingRows, totalLiqs, longsLiqs, shortsLiqs },
-      options: { btcIv7: btcIvBtc7, btcRv7: btcIvBtc7rv, btcIv30: btcIvBtc30, btcRv30: btcIvBtc30rv, ethIv7: ethIvEth7, ethIv30: ethIvEth30, optOiBtc, optOiEth },
+      options: { btcIv7, btcRv7, btcIv30, btcRv30, ethIv7, ethRv7, ethIv30, ethRv30, optOiBtc, optOiEth },
       etf: { rows: etfRows, strategyValue, strategyHoldings, strategyAvgPrice },
     });
   } catch (e) {
