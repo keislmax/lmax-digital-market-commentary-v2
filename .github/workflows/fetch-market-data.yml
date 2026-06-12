@@ -72,6 +72,7 @@ jobs:
             ETH: ['ETHUSDT_PERP.A','ETHUSD_PERP.0','ETHUSDT_PERP.3','ETH-PERPETUAL.2','ETHUSDT_PERP.4','ETHPERP.6'],
             SOL: ['SOLUSDT_PERP.A','SOLUSDT_PERP.3','SOLUSDT_PERP.4','SOLPERP.6'],
             XRP: ['XRPUSDT_PERP.A','XRPUSDT_PERP.3','XRPUSDT_PERP.4','XRPPERP.6'],
+            HYPE: ['HYPEUSDT_PERP.A','HYPEUSDT_PERP.3','HYPEPERP.6','HYPE.H','HYPEUSDT_PERP.4'],
           };
 
           const ALL_SYMBOLS = Object.values(ASSET_SYMBOLS).flat().join(',');
@@ -81,6 +82,7 @@ jobs:
             if (symbol.startsWith('ETH')) return 'ETH';
             if (symbol.startsWith('SOL')) return 'SOL';
             if (symbol.startsWith('XRP')) return 'XRP';
+            if (symbol.startsWith('HYPE') || symbol === 'HYPE.H') return 'HYPE';
             return null;
           }
 

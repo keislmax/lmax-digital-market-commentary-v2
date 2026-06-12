@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
+import { buildTheBlockData } from '@/lib/theblock';
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL!,
@@ -319,13 +320,14 @@ async function getSpotVolume() {
 }
 
 export async function GET() {
-  const [coinalyze, deribit, feargreed, etf, prices, spotvolume] = await Promise.allSettled([
+  const [coinalyze, deribit, feargreed, etf, prices, spotvolume, theblock] = await Promise.allSettled([
     getCoinalyze(),
     getDeribit(),
     getFearGreed(),
     getETF(),
     getPrices(),
     getSpotVolume(),
+    buildTheBlockData(),
   ]);
 
   return NextResponse.json({
@@ -335,6 +337,7 @@ export async function GET() {
     etf:        etf.status        === 'fulfilled' ? etf.value        : null,
     prices:     prices.status     === 'fulfilled' ? prices.value     : null,
     spotvolume: spotvolume.status === 'fulfilled' ? spotvolume.value : null,
+    theblock:   theblock.status   === 'fulfilled' ? theblock.value   : null,
     updatedAt: Date.now(),
   });
 }
