@@ -84,13 +84,16 @@ export async function POST(req: Request) {
     // ---- Section 2: Funding, liquidation and leverage ----
     const solFunding = coinalyzeFundingApy(c?.fundingRate?.chartsByAsset?.SOL?.['30d']);
     const xrpFunding = coinalyzeFundingApy(c?.fundingRate?.chartsByAsset?.XRP?.['30d']);
-
+    const hypeFunding = coinalyzeFundingSnapshot(
+  c?.fundingRate?.byAsset?.HYPE,
+  c?.fundingRate?.chartsByAsset?.HYPE?.['7d']
+);
     const fundingRows = [
       { asset: 'BTC', today: tb?.funding?.btc?.headline ?? null, sevenDaysAgo: tb?.funding?.btc?.headline7dAgo ?? null, source: 'block' },
       { asset: 'ETH', today: tb?.funding?.eth?.headline ?? null, sevenDaysAgo: tb?.funding?.eth?.headline7dAgo ?? null, source: 'block' },
       { asset: 'SOL', today: solFunding.today, sevenDaysAgo: solFunding.sevenDaysAgo, source: 'coinalyze' },
       { asset: 'XRP', today: xrpFunding.today, sevenDaysAgo: xrpFunding.sevenDaysAgo, source: 'coinalyze' },
-      { asset: 'HYPE', today: null, sevenDaysAgo: null, source: 'none' },
+      { asset: 'HYPE', today: hypeFunding.today, sevenDaysAgo: hypeFunding.sevenDaysAgo, source: 'coinalyze' },
     ];
     const totalLiqs = c?.liquidations?.total24h ?? null;
     const longsLiqs = c?.liquidations?.longs24h ?? null;
