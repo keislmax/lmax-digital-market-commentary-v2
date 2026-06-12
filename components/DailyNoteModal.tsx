@@ -149,10 +149,10 @@ function buildHTML(note: DailyNoteData): string {
   </table>
 
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
-    <tr valign="bottom">
+    <tr valign="top">
 
       <!-- LEFT: Options -->
-      <td width="50%" style="padding-right:12px">
+      <td width="50%" style="padding-right:12px" valign="bottom">
         <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 10px 4px">Options</div>
         <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
           <tr>
@@ -190,7 +190,7 @@ function buildHTML(note: DailyNoteData): string {
       </td>
 
       <!-- RIGHT: ETF -->
-      <td width="50%" style="padding-left:12px">
+      <td width="50%" style="padding-left:12px" valign="bottom">
         <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 10px 4px">ETF</div>
         <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
           <tr>
