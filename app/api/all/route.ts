@@ -233,47 +233,72 @@ async function calcPutCallRatio(currency: string): Promise<{ ratio: number | nul
 }
 
 async function getDeribit() {
-  try {
-    const now = Date.now();
-    const [btcCharts, ethCharts, btcSkew, ethSkew, btcBasis, ethBasis, btcPutCall] = await Promise.all([
-  Promise.all(['24h','7d','30d','90d','1y'].map((tf, i) => {
-    const ms = [86400000, 7*86400000, 30*86400000, 90*86400000, 365*86400000][i];
-    const res = [3600, 3600, 86400, 86400, 86400][i];
-    return fetchDeribit('get_volatility_index_data', { currency: 'BTC', start_timestamp: String(now - ms), end_timestamp: String(now), resolution: String(res) });
-  })),
-  Promise.all(['24h','7d','30d','90d','1y'].map((tf, i) => {
-    const ms = [86400000, 7*86400000, 30*86400000, 90*86400000, 365*86400000][i];
-    const res = [3600, 3600, 86400, 86400, 86400][i];
-    return fetchDeribit('get_volatility_index_data', { currency: 'ETH', start_timestamp: String(now - ms), end_timestamp: String(now), resolution: String(res) });
-  })),
-  calcSkew('BTC'),
-  calcSkew('ETH'),
-  calcBasis('BTC'),
-  calcBasis('ETH'),
-  calcPutCallRatio('BTC'),
-]);
-    const toChart = (d: any) => (d?.data || []).map((p: number[]) => ({ t: Math.floor(p[0] / 1000), v: p[4] }));
-    const tfs = ['24h','7d','30d','90d','1y'];
-    const btcChartsByTf: Record<string, any[]> = {};
-    const ethChartsByTf: Record<string, any[]> = {};
-    tfs.forEach((tf, i) => { btcChartsByTf[tf] = toChart(btcCharts[i]); ethChartsByTf[tf] = toChart(ethCharts[i]); });
-    const btcCurrent = btcChartsByTf['24h'].length ? btcChartsByTf['24h'][btcChartsByTf['24h'].length - 1].v : null;
-    const interpSkew = (s: number | null) => s === null ? 'unavailable' : s > 3 ? 'bearish (puts bid up)' : s < -3 ? 'bullish (calls bid up)' : 'neutral';
-    return {
-      dvol: { current: btcCurrent, chartsByAsset: { BTC: btcChartsByTf, ETH: ethChartsByTf } },
-      skew: {
-        value25d: btcSkew === 0 ? null : btcSkew,
-        interpretation: interpSkew(btcSkew),
-        BTC: { value25d: btcSkew, interpretation: interpSkew(btcSkew) },
-        ETH: { value25d: ethSkew === 0 ? null : ethSkew, interpretation: interpSkew(ethSkew === 0 ? null : ethSkew) },
-      },
-      basis: btcBasis,
-      ethBasis,
-      putCallRatio: btcPutCall,
-      skewDebug: { btc: btcSkew, eth: ethSkew },
-      updatedAt: Date.now(),
-    };
-  } catch { return null; }
+  const now = Date.now();
+  const tfs = ['24h', '7d', '30d', '90d', '1y'];
+  const msArr = [86400000, 7 * 86400000, 30 * 86400000, 90 * 86400000, 365 * 86400000];
+  const resArr = [3600, 3600, 86400, 86400, 86400];
+
+  // Each timeframe fetched independently; failures yield an empty chart,
+  // never an exception.
+  const fetchVolCharts = async (currency: string) => {
+    const out: Record<string, { t: number; v: number }[]> = {};
+    const results = await Promise.allSettled(
+      tfs.map((tf, i) =>
+        fetchDeribit('get_volatility_index_data', {
+          currency,
+          start_timestamp: String(now - msArr[i]),
+          end_timestamp: String(now),
+          resolution: String(resArr[i]),
+        })
+      )
+    );
+    results.forEach((r, i) => {
+      out[tfs[i]] =
+        r.status === 'fulfilled'
+          ? ((r.value?.data || []) as number[][]).map((p) => ({ t: Math.floor(p[0] / 1000), v: p[4] }))
+          : [];
+    });
+    return out;
+  };
+
+  const [btcChartsR, ethChartsR, btcSkewR, ethSkewR, btcBasisR, ethBasisR, btcPutCallR] =
+    await Promise.allSettled([
+      fetchVolCharts('BTC'),
+      fetchVolCharts('ETH'),
+      calcSkew('BTC'),
+      calcSkew('ETH'),
+      calcBasis('BTC'),
+      calcBasis('ETH'),
+      calcPutCallRatio('BTC'),
+    ]);
+
+  const btcChartsByTf = btcChartsR.status === 'fulfilled' ? btcChartsR.value : {};
+  const ethChartsByTf = ethChartsR.status === 'fulfilled' ? ethChartsR.value : {};
+  const btcSkew = btcSkewR.status === 'fulfilled' ? btcSkewR.value : null;
+  const ethSkew = ethSkewR.status === 'fulfilled' ? ethSkewR.value : null;
+  const btcBasis = btcBasisR.status === 'fulfilled' ? btcBasisR.value : { basis: null, expiry: null, daysToExpiry: null };
+  const ethBasis = ethBasisR.status === 'fulfilled' ? ethBasisR.value : { basis: null, expiry: null, daysToExpiry: null };
+  const btcPutCall = btcPutCallR.status === 'fulfilled' ? btcPutCallR.value : { ratio: null, putOI: null, callOI: null };
+
+  const btc24h = btcChartsByTf['24h'] || [];
+  const btcCurrent = btc24h.length ? btc24h[btc24h.length - 1].v : null;
+  const interpSkew = (s: number | null) =>
+    s === null ? 'unavailable' : s > 3 ? 'bearish (puts bid up)' : s < -3 ? 'bullish (calls bid up)' : 'neutral';
+
+  return {
+    dvol: { current: btcCurrent, chartsByAsset: { BTC: btcChartsByTf, ETH: ethChartsByTf } },
+    skew: {
+      value25d: btcSkew === 0 ? null : btcSkew,
+      interpretation: interpSkew(btcSkew),
+      BTC: { value25d: btcSkew, interpretation: interpSkew(btcSkew) },
+      ETH: { value25d: ethSkew === 0 ? null : ethSkew, interpretation: interpSkew(ethSkew === 0 ? null : ethSkew) },
+    },
+    basis: btcBasis,
+    ethBasis,
+    putCallRatio: btcPutCall,
+    skewDebug: { btc: btcSkew, eth: ethSkew },
+    updatedAt: Date.now(),
+  };
 }
 
 async function getFearGreed() {
