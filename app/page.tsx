@@ -415,12 +415,20 @@ function BlockVolCard({ tb, loading }: { tb: any; loading: boolean }) {
   );
 }
 
-function BlockETFCard({ tb, loading }: { tb: any; loading: boolean }) {
+function BlockETFCard({ tb, etfFarside, loading }: { tb: any; etfFarside: any; loading: boolean }) {
   const ETF_TABS = ['BTC', 'ETH', 'SOL', 'HYPE'] as const;
   const [asset, setAsset] = useState<string>('BTC');
-  const flows = asset === 'BTC' ? tb?.etf?.flowsBtc : asset === 'ETH' ? tb?.etf?.flowsEth : asset === 'SOL' ? null : tb?.etf?.flowsHype;
-  const aum = asset === 'BTC' ? tb?.etf?.aumBtc : asset === 'ETH' ? tb?.etf?.aumEth : null;
 
+  const solFlowVal = typeof etfFarside?.sol?.latest?.total === 'number' ? etfFarside.sol.latest.total * 1e6 : null;
+  const solFlows = etfFarside?.sol ? {
+    latestFlow: solFlowVal,
+    latestFlowTs: null,
+    byProduct: etfFarside.sol.latest?.flows || {},
+    history: (etfFarside.sol.last30Days || []).map((d: any) => ({ Timestamp: new Date(d.date).getTime() / 1000, Result: (d.total || 0) * 1e6 })),
+  } : null;
+
+  const flows = asset === 'BTC' ? tb?.etf?.flowsBtc : asset === 'ETH' ? tb?.etf?.flowsEth : asset === 'SOL' ? solFlows : tb?.etf?.flowsHype;
+  const aum = asset === 'BTC' ? tb?.etf?.aumBtc : asset === 'ETH' ? tb?.etf?.aumEth : null;
   const flow: number | null = flows?.latestFlow ?? null;
   const flowColor = flow == null ? 'var(--text)' : flow >= 0 ? 'var(--green)' : 'var(--red)';
   const movers: [string, number][] = Object.entries(flows?.byProduct || {})
@@ -882,7 +890,7 @@ export default function Dashboard() {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-          <BlockETFCard tb={tb} loading={loading} />
+          <BlockETFCard tb={tb} etfFarside={data?.etf} loading={loading} />
           <BlockMacroCard tb={tb} loading={loading} />
         </div>
 
