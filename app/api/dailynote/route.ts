@@ -82,8 +82,14 @@ export async function POST(req: Request) {
     const btcDom = priceMap?.btcDominance ?? null;
 
     // ---- Section 2: Funding, liquidation and leverage ----
-    const solFunding = coinalyzeFundingApy(c?.fundingRate?.chartsByAsset?.SOL?.['30d']);
-    const xrpFunding = coinalyzeFundingApy(c?.fundingRate?.chartsByAsset?.XRP?.['30d']);
+    const solFunding = coinalyzeFundingSnapshot(
+  c?.fundingRate?.byAsset?.SOL,
+  c?.fundingRate?.chartsByAsset?.SOL?.['7d']
+);
+const xrpFunding = coinalyzeFundingSnapshot(
+  c?.fundingRate?.byAsset?.XRP,
+  c?.fundingRate?.chartsByAsset?.XRP?.['7d']
+);
     const hypeFunding = coinalyzeFundingSnapshot(
   c?.fundingRate?.byAsset?.HYPE,
   c?.fundingRate?.chartsByAsset?.HYPE?.['7d']
