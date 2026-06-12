@@ -7,8 +7,8 @@ const redis = new Redis({
 });
 
 const COINGECKO_KEY = process.env.COINGECKO_API_KEY;
-const COINS = ['bitcoin', 'ethereum', 'solana', 'ripple'];
-const SYMBOLS = ['BTC', 'ETH', 'SOL', 'XRP'];
+const COINS = ['bitcoin', 'ethereum', 'solana', 'ripple', 'hyperliquid'];
+const SYMBOLS = ['BTC', 'ETH', 'SOL', 'XRP', 'HYPE'];
 const BASE_DERIBIT = 'https://www.deribit.com/api/v2/public';
 const ACTOR_ID = process.env.APIFY_ACTOR_ID;
 const APIFY_TOKEN = process.env.APIFY_API_TOKEN;
@@ -75,14 +75,21 @@ async function getCoinalyze() {
 async function getPrices() {
   try {
     const [markets, global] = await Promise.all([
-      fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${COINS.join(',')}&price_change_percentage=24h&x_cg_demo_api_key=${COINGECKO_KEY}`, { next: { revalidate: 60 } }).then(r => r.json()),
+      fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${COINS.join(',')}&price_change_percentage=24h,7d,30d&x_cg_demo_api_key=${COINGECKO_KEY}`, { next: { revalidate: 60 } }).then(r => r.json()),
       fetch(`https://api.coingecko.com/api/v3/global?x_cg_demo_api_key=${COINGECKO_KEY}`, { next: { revalidate: 60 } }).then(r => r.json()),
     ]);
     const prices: Record<string, any> = {};
     if (Array.isArray(markets)) {
       markets.forEach((coin: any) => {
         const idx = COINS.indexOf(coin.id);
-        if (idx !== -1) prices[SYMBOLS[idx]] = { price: coin.current_price, change24h: coin.price_change_percentage_24h, marketCap: coin.market_cap, volume24h: coin.total_volume };
+        if (idx !== -1) prices[SYMBOLS[idx]] = {
+          price: coin.current_price,
+          change24h: coin.price_change_percentage_24h,
+          change7d: coin.price_change_percentage_7d_in_currency ?? null,
+          change30d: coin.price_change_percentage_30d_in_currency ?? null,
+          marketCap: coin.market_cap,
+          volume24h: coin.total_volume,
+        };
       });
     }
     const globalData = global?.data || {};
