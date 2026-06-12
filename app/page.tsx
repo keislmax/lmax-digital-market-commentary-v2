@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { timeAgo, formatUSD } from '@/lib/utils';
 import FearGreedCard from '@/components/FearGreedCard';
 import OptionsCard from '@/components/OptionsCard';
+import DailyNoteModal from '@/components/DailyNoteModal';
 
 const REFRESH_INTERVAL = 5 * 60 * 1000;
 const TIMEFRAMES = ['24h', '7d', '30d', '90d', '1y'] as const;
@@ -789,6 +790,7 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastFetch, setLastFetch] = useState<number | null>(null);
+  const [showDailyNote, setShowDailyNote] = useState(false);
 
   const fetchData = useCallback(async (isManual = false) => {
     if (isManual) setRefreshing(true);
@@ -835,15 +837,23 @@ export default function Dashboard() {
               <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>Live</span>
             </div>
             {lastFetch && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Updated {timeAgo(lastFetch)}</span>}
-            <button onClick={() => fetchData(true)} disabled={refreshing || loading} style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 6,
-              fontSize: 13, fontWeight: 500, background: refreshing ? 'var(--surface3)' : 'var(--accent)',
-              color: refreshing ? 'var(--text-muted)' : '#fff', border: 'none',
-              cursor: refreshing ? 'not-allowed' : 'pointer', fontFamily: 'DM Sans, sans-serif',
-            }}>
-              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-              Refresh
-            </button>
+            <button onClick={() => setShowDailyNote(true)} style={{
+  display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 6,
+  fontSize: 13, fontWeight: 500, background: '#fff',
+  color: '#1a1917', border: '1px solid #e5e7eb',
+  cursor: 'pointer', fontFamily: 'DM Sans, sans-serif',
+}}>
+  Daily Note
+</button>
+<button onClick={() => fetchData(true)} disabled={refreshing || loading} style={{
+  display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 6,
+  fontSize: 13, fontWeight: 500, background: refreshing ? 'var(--surface3)' : 'var(--accent)',
+  color: refreshing ? 'var(--text-muted)' : '#fff', border: 'none',
+  cursor: refreshing ? 'not-allowed' : 'pointer', fontFamily: 'DM Sans, sans-serif',
+}}>
+  <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+  Refresh
+</button>
           </div>
         </div>
       </header>
