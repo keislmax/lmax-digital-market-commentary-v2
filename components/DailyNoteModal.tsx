@@ -164,16 +164,16 @@ function buildHTML(note: DailyNoteData): string {
           </tr>
           <tr>
             <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;font-weight:600">BTC</td>
-            <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmt(options.btcIv7)}%</td>
-            <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmt(options.btcRv7)}%</td>
-            <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmt(options.btcIv30)}%</td>
-            <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmt(options.btcRv30)}%</td>
+            <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${options.btcIv7 != null ? fmt(options.btcIv7) + '%' : '—'}
+            <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${options.btcRv7 != null ? fmt(options.btcRv7) + '%' : '—'}
+            <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${options.btcIv30 != null ? fmt(options.btcIv30) + '%' : '—'}
+            <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${options.btcRv30 != null ? fmt(options.btcRv30) + '%' : '—'}
           </tr>
           <tr>
             <td style="padding:4px 10px;font-size:12px;font-weight:600">ETH</td>
-            <td style="padding:4px 10px;font-size:12px;text-align:right">${fmt(options.ethIv7)}%</td>
+            <td style="padding:4px 10px;font-size:12px;text-align:right">${options.ethIv7 != null ? fmt(options.ethIv7) + '%' : '—'}
             <td style="padding:4px 10px;font-size:12px;text-align:right">—</td>
-            <td style="padding:4px 10px;font-size:12px;text-align:right">${fmt(options.ethIv30)}%</td>
+            <td style="padding:4px 10px;font-size:12px;text-align:right">${options.ethIv30 != null ? fmt(options.ethIv30) + '%' : '—'}
             <td style="padding:4px 10px;font-size:12px;text-align:right">—</td>
           </tr>
         </table>
