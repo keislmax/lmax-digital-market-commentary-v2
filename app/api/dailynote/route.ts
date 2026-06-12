@@ -41,10 +41,10 @@ async function fetchDailyCloses(coinId: string): Promise<number[]> {
 // SOL/XRP funding from Coinalyze daily history: mean of last 7 daily
 // rates annualised (x3 settlements x365), and the prior week's mean.
 function coinalyzeFundingSnapshot(current: number | undefined, history7d: { t: number; v: number }[] | undefined) {
-  const today = typeof current === 'number' ? current * 3 * 365 * 100 : null;
+  const today = typeof current === 'number' ? current * 3 * 365 : null;
   const pts = (history7d || []).filter(p => typeof p?.v === 'number');
   const oldest = pts.length ? pts[0] : null;
-  const sevenDaysAgo = oldest ? oldest.v * 3 * 365 * 100 : null;
+  const sevenDaysAgo = oldest ? oldest.v * 3 * 365 : null;
   return { today, sevenDaysAgo };
 }
 
