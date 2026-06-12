@@ -54,7 +54,7 @@ interface DailyNoteData {
   dateStr: string;
   spot: { rows: any[]; stablecoins: number | null; rwa: number | null; btcDominance: number | null };
   funding: { rows: any[]; totalLiqs: number | null; longsLiqs: number | null; shortsLiqs: number | null };
-  options: { btcIv7: number | null; btcRv7: number | null; btcIv30: number | null; btcRv30: number | null; ethIv7: number | null; ethIv30: number | null; optOiBtc: number | null; optOiEth: number | null };
+  options: { btcIv7: number | null; btcRv7: number | null; btcIv30: number | null; btcRv30: number | null; ethIv7: number | null; ethRv7: number | null; ethIv30: number | null; ethRv30: number | null; optOiBtc: number | null; optOiEth: number | null };
   etf: { rows: any[]; strategyValue: number | null; strategyHoldings: number | null; strategyAvgPrice: number | null };
 }
 
@@ -172,9 +172,9 @@ function buildHTML(note: DailyNoteData): string {
           <tr>
             <td style="padding:4px 10px;font-size:12px;font-weight:600">ETH</td>
             <td style="padding:4px 10px;font-size:12px;text-align:right">${options.ethIv7 != null ? fmt(options.ethIv7) + '%' : '—'}
-            <td style="padding:4px 10px;font-size:12px;text-align:right">—</td>
+            <td style="padding:4px 10px;font-size:12px;text-align:right">${options.ethRv7 != null ? fmt(options.ethRv7) + '%' : '—'}</td>
             <td style="padding:4px 10px;font-size:12px;text-align:right">${options.ethIv30 != null ? fmt(options.ethIv30) + '%' : '—'}
-            <td style="padding:4px 10px;font-size:12px;text-align:right">—</td>
+            <td style="padding:4px 10px;font-size:12px;text-align:right">${options.ethRv30 != null ? fmt(options.ethRv30) + '%' : '—'}</td>
           </tr>
         </table>
         <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-top:8px">
@@ -215,6 +215,7 @@ function buildHTML(note: DailyNoteData): string {
       </td>
     </tr>
   </table>
+  <p style="font-size:10px;color:#9ca3af;margin:14px 0 0">Funding BTC/ETH: The Block (7DMA, median of active exchanges). Funding SOL/XRP: LMAX calculation from Coinalyze daily rates, 7-day average annualised. Realised vol: LMAX calculation from CoinGecko daily closes. ETF flows: The Block (SOL: Farside). Liquidations: Coinalyze, BTC/ETH/SOL/XRP major perp contracts.</p>
 </div>`;
 }
 
