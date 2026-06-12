@@ -97,7 +97,7 @@ jobs:
           }
 
           function aggregateOI(data) {
-            const byTime = {total:{}, BTC:{}, ETH:{}, SOL:{}, XRP:{}};
+            const byTime = {total:{}, BTC:{}, ETH:{}, SOL:{}, XRP:{}, HYPE:{}};
             for (const sym of (data||[])) {
               const asset = getAsset(sym.symbol||'');
               for (const p of (sym.history||[])) {
@@ -106,11 +106,11 @@ jobs:
               }
             }
             const toArr = obj => Object.entries(obj).map(([t,v])=>({t:+t,v})).sort((a,b)=>a.t-b.t);
-            return { total: toArr(byTime.total), BTC: toArr(byTime.BTC), ETH: toArr(byTime.ETH), SOL: toArr(byTime.SOL), XRP: toArr(byTime.XRP) };
+            return { total: toArr(byTime.total), BTC: toArr(byTime.BTC), ETH: toArr(byTime.ETH), SOL: toArr(byTime.SOL), XRP: toArr(byTime.XRP), HYPE: toArr(byTime.HYPE) };
           }
 
           function aggregateLiq(data) {
-            const byTime = {total:{}, BTC:{}, ETH:{}, SOL:{}, XRP:{}};
+            const byTime = {total:{}, BTC:{}, ETH:{}, SOL:{}, XRP:{}, HYPE:{}};
             for (const sym of (data||[])) {
               const asset = getAsset(sym.symbol||'');
               for (const p of (sym.history||[])) {
@@ -125,11 +125,11 @@ jobs:
               }
             }
             const toArr = obj => Object.entries(obj).map(([t,v])=>({t:+t,...v})).sort((a,b)=>a.t-b.t);
-            return { total: toArr(byTime.total), BTC: toArr(byTime.BTC), ETH: toArr(byTime.ETH), SOL: toArr(byTime.SOL), XRP: toArr(byTime.XRP) };
+            return { total: toArr(byTime.total), BTC: toArr(byTime.BTC), ETH: toArr(byTime.ETH), SOL: toArr(byTime.SOL), XRP: toArr(byTime.XRP), HYPE: toArr(byTime.HYPE) };
           }
 
           function aggregateFund(data) {
-            const byTime = {total:{}, BTC:{}, ETH:{}, SOL:{}, XRP:{}};
+            const byTime = {total:{}, BTC:{}, ETH:{}, SOL:{}, XRP:{}, HYPE:{}};
             for (const sym of (data||[])) {
               const asset = getAsset(sym.symbol||'');
               for (const p of (sym.history||[])) {
@@ -144,7 +144,7 @@ jobs:
             const toArr = obj => Object.entries(obj)
               .map(([t,vals])=>({t:+t,v:vals.reduce((a,b)=>a+b,0)/vals.length}))
               .sort((a,b)=>a.t-b.t);
-            return { total: toArr(byTime.total), BTC: toArr(byTime.BTC), ETH: toArr(byTime.ETH), SOL: toArr(byTime.SOL), XRP: toArr(byTime.XRP) };
+            return { total: toArr(byTime.total), BTC: toArr(byTime.BTC), ETH: toArr(byTime.ETH), SOL: toArr(byTime.SOL), XRP: toArr(byTime.XRP), HYPE: toArr(byTime.HYPE) };
           }
 
           function buildCharts(h24, h7d, h30d, h90d, h1y, aggregateFn) {
