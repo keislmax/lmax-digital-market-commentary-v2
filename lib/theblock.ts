@@ -201,6 +201,7 @@ const SLUGS = {
   etfAumEth: "spot-ethereum-etf-aum-daily",
   stablecoins: "total-stablecoin-supply-2",
   strategyHoldings: "microstrategy-bitcoin-holdings",
+  rwaTvl: "total-value-locked-rwa-by-protocol",
 } as const;
 
 function summedMetric(chart: ParsedChart | null, historyPoints = 90) {
@@ -323,6 +324,7 @@ export async function buildTheBlockData() {
     },
     stablecoins: summedMetric(charts[SLUGS.stablecoins]),
     strategy: perSeriesMetric(charts[SLUGS.strategyHoldings], 90),
+    rwa: summedMetric(charts[SLUGS.rwaTvl]),
     news: news.articles,
     errors,
     updatedAt: Date.now(),
