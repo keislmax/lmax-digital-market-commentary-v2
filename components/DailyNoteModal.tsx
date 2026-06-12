@@ -149,7 +149,7 @@ function buildHTML(note: DailyNoteData): string {
   </table>
 
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
-    <tr valign="top">
+    <tr valign="bottom">
 
       <!-- LEFT: Options -->
       <td width="50%" style="padding-right:12px" valign="bottom">
