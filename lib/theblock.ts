@@ -202,6 +202,7 @@ const SLUGS = {
   stablecoins: "total-stablecoin-supply-2",
   strategyHoldings: "microstrategy-bitcoin-holdings",
   rwaTvl: "total-value-locked-rwa-by-protocol",
+  btcEthFuturesVolume: "btc-and-eth-futures-volume-7dma",
 } as const;
 
 function summedMetric(chart: ParsedChart | null, historyPoints = 90) {
@@ -325,6 +326,7 @@ export async function buildTheBlockData() {
     stablecoins: summedMetric(charts[SLUGS.stablecoins]),
     strategy: perSeriesMetric(charts[SLUGS.strategyHoldings], 90),
     rwa: summedMetric(charts[SLUGS.rwaTvl]),
+    btcEthFuturesVolume: perSeriesMetric(charts[SLUGS.btcEthFuturesVolume], 90),
     news: news.articles,
     errors,
     updatedAt: Date.now(),
