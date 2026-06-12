@@ -44,6 +44,7 @@ async function getCoinalyze() {
       ETH: rawByAsset.ETH || lastValue(fundCharts?.ETH?.['24h'] || []),
       SOL: rawByAsset.SOL || lastValue(fundCharts?.SOL?.['24h'] || []),
       XRP: rawByAsset.XRP || lastValue(fundCharts?.XRP?.['24h'] || []),
+      HYPE: rawByAsset.HYPE || lastValue(fundCharts?.HYPE?.['24h'] || []),
     };
     return {
       price: 0,
