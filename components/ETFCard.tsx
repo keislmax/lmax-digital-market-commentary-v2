@@ -41,8 +41,9 @@ export default function ETFCard({ data, loading }: Props) {
     <div className="card" style={{ padding: '20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
         <div style={CARD_TITLE}>Institutional ETF Flows</div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Farside Investors</div>
-      </div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+          {activeAsset === 'SOL' ? 'Farside Investors' : 'The Block'}
+        </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
         {ASSETS.map(asset => (
