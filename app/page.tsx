@@ -416,9 +416,9 @@ function BlockVolCard({ tb, loading }: { tb: any; loading: boolean }) {
 }
 
 function BlockETFCard({ tb, loading }: { tb: any; loading: boolean }) {
-  const ETF_TABS = ['BTC', 'ETH', 'HYPE'] as const;
+  const ETF_TABS = ['BTC', 'ETH', 'SOL', 'HYPE'] as const;
   const [asset, setAsset] = useState<string>('BTC');
-  const flows = asset === 'BTC' ? tb?.etf?.flowsBtc : asset === 'ETH' ? tb?.etf?.flowsEth : tb?.etf?.flowsHype;
+  const flows = asset === 'BTC' ? tb?.etf?.flowsBtc : asset === 'ETH' ? tb?.etf?.flowsEth : asset === 'SOL' ? null : tb?.etf?.flowsHype;
   const aum = asset === 'BTC' ? tb?.etf?.aumBtc : asset === 'ETH' ? tb?.etf?.aumEth : null;
 
   const flow: number | null = flows?.latestFlow ?? null;
@@ -434,7 +434,7 @@ function BlockETFCard({ tb, loading }: { tb: any; loading: boolean }) {
     <div className="card" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
         <div style={CARD_TITLE_STYLE}>Spot ETF Flows</div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>The Block</div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{asset === 'SOL' ? 'Farside Investors' : 'The Block'}</div>
       </div>
       <div style={{ marginBottom: 8 }}>
         <MiniTabs options={ETF_TABS} active={asset} onChange={setAsset} />
