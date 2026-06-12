@@ -913,6 +913,10 @@ export default function Dashboard() {
         <div style={{ textAlign: 'center', padding: '12px 0 4px', fontSize: 11, color: 'var(--text-muted)' }}>
           Derivatives, Options, ETF & Stablecoins: The Block · Liquidations: Coinalyze · Prices & Global: CoinGecko · Skew & Basis: Deribit · Sentiment: Alternative.me
         </div>
+
+        {showDailyNote && (
+          <DailyNoteModal data={data} onClose={() => setShowDailyNote(false)} />
+        )}
       </main>
     </div>
   );
