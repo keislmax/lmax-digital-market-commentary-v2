@@ -40,15 +40,11 @@ async function fetchDailyCloses(coinId: string): Promise<number[]> {
 
 // SOL/XRP funding from Coinalyze daily history: mean of last 7 daily
 // rates annualised (x3 settlements x365), and the prior week's mean.
-function coinalyzeFundingApy(points: { t: number; v: number }[] | undefined) {
-  const pts = (points || []).filter(p => typeof p?.v === 'number');
-  if (pts.length < 8) return { today: null as number | null, sevenDaysAgo: null as number | null };
-  const sorted = [...pts].sort((a, b) => a.t - b.t);
-  const mean = (arr: { v: number }[]) => arr.reduce((s, p) => s + p.v, 0) / arr.length;
-  const last7 = sorted.slice(-7);
-  const prev7 = sorted.slice(-14, -7);
-  const today = last7.length ? mean(last7) * 3 * 365 * 100 : null;
-  const sevenDaysAgo = prev7.length >= 4 ? mean(prev7) * 3 * 365 * 100 : null;
+function coinalyzeFundingSnapshot(current: number | undefined, history7d: { t: number; v: number }[] | undefined) {
+  const today = typeof current === 'number' ? current * 3 * 365 * 100 : null;
+  const pts = (history7d || []).filter(p => typeof p?.v === 'number');
+  const oldest = pts.length ? pts[0] : null;
+  const sevenDaysAgo = oldest ? oldest.v * 3 * 365 * 100 : null;
   return { today, sevenDaysAgo };
 }
 
