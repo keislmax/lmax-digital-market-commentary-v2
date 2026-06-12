@@ -156,7 +156,7 @@ jobs:
             const a90d = aggregateFn(h90d);
             const a1y  = aggregateFn(h1y);
             const result = {};
-            for (const asset of ['total','BTC','ETH','SOL','XRP', 'HYPE']) {
+            for (const asset of ['total','BTC','ETH','SOL','XRP','HYPE']) {
               result[asset] = {
                 '24h': a24[asset]  || [],
                 '7d':  a7d[asset]  || [],
