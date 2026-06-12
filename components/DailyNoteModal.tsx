@@ -95,7 +95,7 @@ function buildHTML(note: DailyNoteData): string {
     <li>&nbsp;</li>
   </ul>
 
-  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b7280;padding:0 0 8px;border-bottom:1px solid #e5e7eb;margin-bottom:16px">Copy-Pasted Data</div>
+  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b7280;padding:0 0 8px;border-bottom:1px solid #e5e7eb;margin-bottom:16px">Market Data</div>
 
   <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 10px 4px">Spot Performance</div>
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:4px">
