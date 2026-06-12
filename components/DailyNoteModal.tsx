@@ -153,7 +153,7 @@ function buildHTML(note: DailyNoteData): string {
 
       <!-- LEFT: Options -->
       <td width="50%" style="padding-right:12px" valign="top">
-        <div style="height:32px;line-height:1;">&nbsp;</div>
+        <div style="height:16px;line-height:1;">&nbsp;</div>
         <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 10px 4px">Options</div>
         <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
           <tr>
