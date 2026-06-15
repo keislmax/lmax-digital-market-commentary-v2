@@ -220,7 +220,7 @@ function buildHTML(note: DailyNoteData): string {
   </ul>
 
   <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 0 4px;margin-bottom:4px">Chatter / Market Sentiment</div>
-  <ul style="margin:0 0 20px 0;padding-left:20px;font-size:12px;color:#1a1917;line-height:2">
+  <ul style="margin:0 0 40px 0;padding-left:20px;font-size:12px;color:#1a1917;line-height:2">
     <li>&nbsp;</li>
     <li>&nbsp;</li>
     <li>&nbsp;</li>
