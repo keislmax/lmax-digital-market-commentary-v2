@@ -226,9 +226,11 @@ function buildHTML(note: DailyNoteData): string {
     <li>&nbsp;</li>
   </ul>
 
-  <p style="margin:14px 0 0;mso-margin-top-alt:14px;line-height:1.4"><span style="font-size:7.5pt;mso-ansi-font-size:7.5pt;mso-bidi-font-size:7.5pt;color:#9ca3af;font-family:Arial,sans-serif">Funding BTC/ETH: The Block (7DMA, median of active exchanges). Funding SOL/XRP/HYPE: LMAX calculation from Coinalyze daily rates, 7-day average annualised.</span></p>
-</div>`;
-}
+  <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:14px;width:100%">
+    <tr>
+      <td style="font-size:7pt;line-height:9pt;color:#9ca3af;font-family:Arial,sans-serif;padding:0">Funding BTC/ETH: The Block (7DMA, median of active exchanges). Funding SOL/XRP/HYPE: LMAX calculation from Coinalyze daily rates, 7-day average annualised.</td>
+    </tr>
+  </table>
 export default function DailyNoteModal({ data, onClose }: { data: any; onClose: () => void }) {
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState<DailyNoteData | null>(null);
