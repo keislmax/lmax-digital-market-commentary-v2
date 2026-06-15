@@ -231,6 +231,9 @@ function buildHTML(note: DailyNoteData): string {
       <td style="font-size:7pt;line-height:9pt;color:#9ca3af;font-family:Arial,sans-serif;padding:0">Funding BTC/ETH: The Block (7DMA, median of active exchanges). Funding SOL/XRP/HYPE: LMAX calculation from Coinalyze daily rates, 7-day average annualised.</td>
     </tr>
   </table>
+</div>`;
+}
+
 export default function DailyNoteModal({ data, onClose }: { data: any; onClose: () => void }) {
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState<DailyNoteData | null>(null);
