@@ -97,8 +97,8 @@ function buildHTML(note: DailyNoteData): string {
   </ul>
 
   <div style="padding:0 0 8px;border-bottom:1px solid #e5e7eb;margin-bottom:16px">
-    <span style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;vertical-align:middle">Market Data — Brought to you by </span>
-    <a href="https://www.theblock.co/" style="text-decoration:none;vertical-align:middle"><img src="https://market-data-eta.vercel.app/images.png" alt="The Block" height="14" style="height:14px;vertical-align:middle;border:0" /></a>
+    <span style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;vertical-align:middle">Market Data, Brought to you by </span>
+    <a href="https://www.theblock.co/" style="text-decoration:none;vertical-align:middle"><img src="https://market-data-eta.vercel.app/images.png" alt="The Block" height="22" style="height:22px;vertical-align:middle;border:0" /></a>
   </div>
 
   <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 10px 4px">Spot Performance</div>
@@ -208,14 +208,14 @@ function buildHTML(note: DailyNoteData): string {
     </tr>
   </table>
 
-  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 0 4px;margin-top:20px;margin-bottom:4px">Chatter / Market Sentiment</div>
+  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 0 4px;margin-top:20px;margin-bottom:4px">Macro Overview</div>
   <ul style="margin:0 0 20px 0;padding-left:20px;font-size:12px;color:#1a1917;line-height:2">
     <li>&nbsp;</li>
     <li>&nbsp;</li>
     <li>&nbsp;</li>
   </ul>
 
-  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 0 4px;margin-bottom:4px">Macro Overview</div>
+  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 0 4px;margin-bottom:4px">Chatter / Market Sentiment</div>
   <ul style="margin:0 0 20px 0;padding-left:20px;font-size:12px;color:#1a1917;line-height:2">
     <li>&nbsp;</li>
     <li>&nbsp;</li>
