@@ -226,9 +226,9 @@ function buildHTML(note: DailyNoteData): string {
     <li>&nbsp;</li>
   </ul>
 
-  <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:14px;width:100%">
+  <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:28px;width:100%">
     <tr>
-      <td style="font-size:7pt;line-height:9pt;color:#9ca3af;font-family:Arial,sans-serif;padding:0">Funding BTC/ETH: The Block (7DMA, median of active exchanges). Funding SOL/XRP/HYPE: LMAX calculation from Coinalyze daily rates, 7-day average annualised.</td>
+      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-family:Arial,sans-serif;padding:8px 0 0 0">Funding BTC/ETH: The Block (7DMA, median of active exchanges). Funding SOL/XRP/HYPE: LMAX calculation from Coinalyze daily rates, 7-day average annualised.</td>
     </tr>
   </table>
 </div>`;
