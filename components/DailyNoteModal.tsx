@@ -98,7 +98,7 @@ function buildHTML(note: DailyNoteData): string {
 
   <div style="padding:0 0 8px;border-bottom:1px solid #e5e7eb;margin-bottom:16px">
     <span style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;vertical-align:middle">Market Data, Brought to you by </span>
-    <a href="https://www.theblock.co/" style="text-decoration:none;vertical-align:middle"><img src="https://market-data-eta.vercel.app/images.png" alt="The Block" height="22" style="height:22px;vertical-align:middle;border:0" /></a>
+    <a href="https://www.theblock.co/" style="text-decoration:none;vertical-align:middle"><img src="https://market-data-eta.vercel.app/images.png" alt="The Block" height="36" style="height:36px;vertical-align:middle;border:0" /></a>
   </div>
 
   <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 10px 4px">Spot Performance</div>
