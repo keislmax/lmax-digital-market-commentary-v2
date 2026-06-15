@@ -76,12 +76,13 @@ function buildHTML(note: DailyNoteData): string {
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;color:${pctColor(r.sevenDaysAgo)}">${r.sevenDaysAgo != null ? fmtPct(r.sevenDaysAgo) : '—'}</td>
     </tr>`).join('');
 
+  const fmtAum = (v: number | null | undefined) => v == null ? '<span style="color:#9ca3af;font-style:italic">Data Not Published</span>' : fmtUSD(v);
   const etfRowsHTML = etf.rows.map(r => `
     <tr>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;font-weight:600">${r.asset}</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;color:${flowColor(r.flow)}">${fmtFlow(r.flow)}</td>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmtUSD(r.aum)}</td>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmtUSD(r.aum30d)}</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmtAum(r.aum)}</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmtAum(r.aum30d)}</td>
     </tr>`).join('');
 
   return `
@@ -95,7 +96,10 @@ function buildHTML(note: DailyNoteData): string {
     <li>&nbsp;</li>
   </ul>
 
-  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b7280;padding:0 0 8px;border-bottom:1px solid #e5e7eb;margin-bottom:16px">Market Data</div>
+  <div style="padding:0 0 8px;border-bottom:1px solid #e5e7eb;margin-bottom:16px">
+    <span style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;vertical-align:middle">Market Data — Brought to you by </span>
+    <a href="https://www.theblock.co/" style="text-decoration:none;vertical-align:middle"><img src="https://market-data-eta.vercel.app/images.png" alt="The Block" height="14" style="height:14px;vertical-align:middle;border:0" /></a>
+  </div>
 
   <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 10px 4px">Spot Performance</div>
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:4px">
@@ -211,12 +215,14 @@ function buildHTML(note: DailyNoteData): string {
     <li>&nbsp;</li>
   </ul>
 
-  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 0 4px;margin-bottom:4px">Agent Thoughts</div>
+  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 0 4px;margin-bottom:4px">Macro Overview</div>
   <ul style="margin:0 0 20px 0;padding-left:20px;font-size:12px;color:#1a1917;line-height:2">
+    <li>&nbsp;</li>
+    <li>&nbsp;</li>
     <li>&nbsp;</li>
   </ul>
 
-  <p style="font-size:10px;color:#9ca3af;margin:14px 0 0">Funding BTC/ETH: The Block (7DMA, median of active exchanges). Funding SOL/XRP/HYPE: LMAX calculation from Coinalyze daily rates, 7-day average annualised.</p>
+  <p style="font-size:8px;color:#9ca3af;margin:14px 0 0;line-height:1.4">Funding BTC/ETH: The Block (7DMA, median of active exchanges). Funding SOL/XRP/HYPE: LMAX calculation from Coinalyze daily rates, 7-day average annualised.</p>
 </div>`;
 }
 export default function DailyNoteModal({ data, onClose }: { data: any; onClose: () => void }) {
