@@ -94,9 +94,14 @@ const xrpFunding = coinalyzeFundingSnapshot(
   c?.fundingRate?.byAsset?.HYPE,
   c?.fundingRate?.chartsByAsset?.HYPE?.['7d']
 );
+    // BTC/ETH funding from The Block, single benchmark exchange (Binance),
+    // since the per-exchange redesign removed the median headline.
+    const BENCHMARK = 'Binance';
+    const btcBench = tb?.funding?.btc?.exchanges?.[BENCHMARK] ?? null;
+    const ethBench = tb?.funding?.eth?.exchanges?.[BENCHMARK] ?? null;
     const fundingRows = [
-      { asset: 'BTC', today: tb?.funding?.btc?.headline ?? null, sevenDaysAgo: tb?.funding?.btc?.headline7dAgo ?? null, source: 'block' },
-      { asset: 'ETH', today: tb?.funding?.eth?.headline ?? null, sevenDaysAgo: tb?.funding?.eth?.headline7dAgo ?? null, source: 'block' },
+      { asset: 'BTC', today: btcBench?.latest ?? null, sevenDaysAgo: btcBench?.sevenDaysAgo ?? null, source: 'block' },
+      { asset: 'ETH', today: ethBench?.latest ?? null, sevenDaysAgo: ethBench?.sevenDaysAgo ?? null, source: 'block' },
       { asset: 'SOL', today: solFunding.today, sevenDaysAgo: solFunding.sevenDaysAgo, source: 'coinalyze' },
       { asset: 'XRP', today: xrpFunding.today, sevenDaysAgo: xrpFunding.sevenDaysAgo, source: 'coinalyze' },
       { asset: 'HYPE', today: hypeFunding.today, sevenDaysAgo: hypeFunding.sevenDaysAgo, source: 'coinalyze' },
