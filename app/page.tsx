@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, AlertCircle, TrendingUp, TrendingDown, Sparkles, Loader2, Newspaper } from 'lucide-react';
 import Image from 'next/image';
 import { timeAgo, formatUSD } from '@/lib/utils';
@@ -321,52 +321,175 @@ function BlockOICard({ tb, loading }: { tb: any; loading: boolean }) {
   );
 }
 
+const FUNDING_COLORS = ['#2563eb', '#dc2626', '#16a34a', '#7c3aed', '#ea580c', '#0891b2', '#db2777', '#ca8a04'];
+const FUNDING_TIMEFRAMES = [
+  { label: '30D', days: 30 },
+  { label: '90D', days: 90 },
+  { label: '1Y', days: 365 },
+] as const;
+
+function fmtPct2(v: number | null): string {
+  if (v == null) return '—';
+  return (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+}
+
 function BlockFundingCard({ tb, loading }: { tb: any; loading: boolean }) {
   const [asset, setAsset] = useState<BlockAsset>('BTC');
+  const [days, setDays] = useState<number>(90);
+  const [hidden, setHidden] = useState<Record<string, boolean>>({});
+  const [hover, setHover] = useState<{ x: number; items: { name: string; value: number; color: string }[]; label: string } | null>(null);
+
   const m = asset === 'BTC' ? tb?.funding?.btc : tb?.funding?.eth;
-  const apy: number | null = m?.headline ?? null;
-  const apy7d: number | null = m?.headline7dAgo ?? null;
-  const rateColor = apy == null ? 'var(--text)' : apy > 0 ? 'var(--green)' : 'var(--red)';
+  const exchanges: Record<string, any> = m?.exchanges || {};
+  const names = Object.keys(exchanges);
 
-  const exchanges: [string, number][] = Object.entries(m?.perExchange || {})
-    .filter((e): e is [string, number] => typeof e[1] === 'number')
-    .sort((a, b) => b[1] - a[1]);
+  const colorFor = (i: number) => FUNDING_COLORS[i % FUNDING_COLORS.length];
+  const toggle = (name: string) => setHidden(h => ({ ...h, [name]: !h[name] }));
 
-  const getInsight = (r: number | null): { text: string; type: 'bullish' | 'bearish' | 'warning' | 'neutral' } => {
-    if (r == null) return { text: 'Unavailable', type: 'neutral' };
-    if (r > 20) return { text: 'Elevated, longs crowded', type: 'warning' };
-    if (r > 5) return { text: 'Positive, longs paying', type: 'neutral' };
-    if (r < -5) return { text: 'Negative, shorts paying', type: 'bullish' };
-    return { text: 'Subdued, balanced positioning', type: 'neutral' };
-  };
-  const insight = getInsight(apy);
+  // Build the windowed series per visible exchange.
+  const now = Math.floor(Date.now() / 1000);
+  const cutoff = now - days * 86400;
+  const lines = names.map((name, i) => {
+    const hist = (exchanges[name]?.history || []).filter((p: any) => p.Timestamp >= cutoff);
+    return { name, color: colorFor(i), points: hist, hidden: !!hidden[name] };
+  });
+
+  const visibleLines = lines.filter(l => !l.hidden && l.points.length > 1);
+  const allValues = visibleLines.flatMap(l => l.points.map((p: any) => p.Result));
+  const minV = allValues.length ? Math.min(...allValues) : 0;
+  const maxV = allValues.length ? Math.max(...allValues) : 1;
+  const range = maxV - minV || 1;
+
+  // Shared timestamp axis from the longest visible line.
+  const axisLine = visibleLines.reduce((a, b) => (b.points.length > a.points.length ? b : a), visibleLines[0] || { points: [] });
+  const axisTs: number[] = (axisLine.points || []).map((p: any) => p.Timestamp);
+
+  const W = 400, H = 110;
+  const xFor = (i: number, n: number) => n <= 1 ? 0 : (i / (n - 1)) * W;
+  const yFor = (v: number) => H - ((v - minV) / range) * (H - 10) - 5;
 
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-        <div style={CARD_TITLE_STYLE}>Funding Rate (7DMA, APY)</div>
+        <div style={CARD_TITLE_STYLE}>Funding Rate, 7-Day Avg</div>
         <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>The Block</div>
       </div>
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <MiniTabs options={BLOCK_ASSETS} active={asset} onChange={v => setAsset(v as BlockAsset)} />
+        <MiniTabs options={BLOCK_ASSETS} active={asset} onChange={v => { setAsset(v as BlockAsset); setHover(null); }} />
+        <div style={{ display: 'flex', gap: 3 }}>
+          {FUNDING_TIMEFRAMES.map(t => (
+            <button key={t.label} onClick={() => { setDays(t.days); setHover(null); }} style={{
+              padding: '2px 7px', borderRadius: 3, fontSize: 10, fontWeight: 600,
+              background: days === t.days ? 'var(--accent)' : 'var(--surface2)',
+              color: days === t.days ? '#fff' : 'var(--text-muted)',
+              border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+            }}>{t.label}</button>
+          ))}
+        </div>
       </div>
-      <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: rateColor, lineHeight: 1.1, marginBottom: 2 }}>
-        {loading || apy == null ? '...' : (apy > 0 ? '+' : '') + apy.toFixed(2) + '%'}
-      </div>
-      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
-        {apy7d != null ? `7 days ago: ${(apy7d > 0 ? '+' : '') + apy7d.toFixed(2)}%` : 'Median of active exchanges'}
-      </div>
-      {!loading && apy != null && <InsightPill text={insight.text} type={insight.type} />}
-      {exchanges.length > 0 && (
-        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {exchanges.slice(0, 4).map(([name, v]) => (
-            <div key={name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10 }}>
-              <span style={{ color: 'var(--text-muted)' }}>{name}</span>
-              <span style={{ fontWeight: 600, color: v > 0 ? 'var(--green)' : 'var(--red)' }}>{(v > 0 ? '+' : '') + v.toFixed(2)}%</span>
+
+      {loading || !names.length ? (
+        <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+          {loading ? 'Loading...' : 'No data'}
+        </div>
+      ) : (
+        <div style={{ position: 'relative' }}>
+          <svg
+            viewBox={`0 0 ${W} ${H}`}
+            style={{ width: '100%', height: H, display: 'block', cursor: 'crosshair' }}
+            preserveAspectRatio="none"
+            onMouseMove={e => {
+              if (!axisTs.length) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              const idx = Math.max(0, Math.min(axisTs.length - 1, Math.round((e.clientX - rect.left) / rect.width * (axisTs.length - 1))));
+              const ts = axisTs[idx];
+              const items = visibleLines.map(l => {
+                const match = l.points.find((p: any) => p.Timestamp === ts) || l.points[Math.min(idx, l.points.length - 1)];
+                return match ? { name: l.name, value: match.Result, color: l.color } : null;
+              }).filter(Boolean) as { name: string; value: number; color: string }[];
+              setHover({ x: xFor(idx, axisTs.length), items, label: fmtDate(ts) });
+            }}
+            onMouseLeave={() => setHover(null)}
+          >
+            {/* zero line */}
+            {minV < 0 && maxV > 0 && (
+              <line x1={0} y1={yFor(0)} x2={W} y2={yFor(0)} stroke="var(--border)" strokeWidth="0.5" strokeDasharray="2,2" />
+            )}
+            {visibleLines.map(l => {
+              const pts = l.points.map((p: any, i: number) => `${xFor(i, l.points.length)},${yFor(p.Result)}`).join(' ');
+              return <polyline key={l.name} points={pts} fill="none" stroke={l.color} strokeWidth="1.3" />;
+            })}
+            {hover && <line x1={hover.x} y1={0} x2={hover.x} y2={H} stroke="var(--text-muted)" strokeWidth="0.5" strokeDasharray="3,3" />}
+          </svg>
+          {hover && hover.items.length > 0 && (
+            <div style={{
+              position: 'absolute', bottom: '100%',
+              left: `${(hover.x / W) * 100}%`,
+              transform: (hover.x / W) > 0.6 ? 'translateX(-100%)' : 'translateX(0)',
+              background: 'rgba(28,28,26,.94)', color: '#fff',
+              padding: '5px 9px', borderRadius: 4, fontSize: 10,
+              fontFamily: 'var(--mono)', pointerEvents: 'none',
+              whiteSpace: 'nowrap', marginBottom: 6, zIndex: 10,
+            }}>
+              <div style={{ opacity: 0.65, marginBottom: 3 }}>{hover.label}</div>
+              {hover.items.sort((a, b) => b.value - a.value).map(it => (
+                <div key={it.name} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: it.color, display: 'inline-block' }} />
+                  <span style={{ minWidth: 56 }}>{it.name}</span>
+                  <span style={{ fontWeight: 600 }}>{fmtPct2(it.value)}</span>
+                </div>
+              ))}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Toggleable legend */}
+      {names.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', marginTop: 8 }}>
+          {names.map((name, i) => (
+            <button key={name} onClick={() => toggle(name)} style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+              fontFamily: 'inherit', opacity: hidden[name] ? 0.35 : 1,
+            }}>
+              <span style={{ width: 9, height: 2.5, background: colorFor(i), display: 'inline-block', borderRadius: 1 }} />
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', textDecoration: hidden[name] ? 'line-through' : 'none' }}>{name}</span>
+            </button>
           ))}
         </div>
       )}
+
+      {/* Per-exchange today / 7d / 30d table */}
+      {names.length > 0 && (
+        <div style={{ marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '3px 12px', fontSize: 10 }}>
+            <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Exchange</span>
+            <span style={{ color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>Today</span>
+            <span style={{ color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>7d ago</span>
+            <span style={{ color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>30d ago</span>
+            {names.map((name, i) => {
+              const ex = exchanges[name];
+              return (
+                <React.Fragment key={name}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ width: 7, height: 2.5, background: colorFor(i), display: 'inline-block', borderRadius: 1 }} />
+                    <span style={{ color: 'var(--text)' }}>{name}</span>
+                  </span>
+                  <span style={{ textAlign: 'right', color: ex?.latest >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtPct2(ex?.latest)}</span>
+                  <span style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{fmtPct2(ex?.sevenDaysAgo)}</span>
+                  <span style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{fmtPct2(ex?.thirtyDaysAgo)}</span>
+                </React.Fragment>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.4 }}>
+        Each line is one exchange's funding rate, smoothed over the prior 7 days. Source: The Block. dYdX V3 excluded.
+      </div>
     </div>
   );
 }
