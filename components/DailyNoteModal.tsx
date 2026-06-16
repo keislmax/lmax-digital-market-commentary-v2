@@ -69,12 +69,14 @@ function buildHTML(note: DailyNoteData): string {
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;color:${pctColor(r.change1m)}">${fmtPct(r.change1m)}</td>
     </tr>`).join('');
 
-  const fundingRowsHTML = funding.rows.map(r => `
+  const fundingRow = (r: any) => `
     <tr>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;font-weight:600">${r.asset}</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;color:${pctColor(r.today)}">${r.today != null ? fmtPct(r.today) : '—'}</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;color:${pctColor(r.sevenDaysAgo)}">${r.sevenDaysAgo != null ? fmtPct(r.sevenDaysAgo) : '—'}</td>
-    </tr>`).join('');
+    </tr>`;
+  const fundingRowsBlock = funding.rows.filter((r: any) => r.source === 'block').map(fundingRow).join('');
+  const fundingRowsCoinalyze = funding.rows.filter((r: any) => r.source === 'coinalyze').map(fundingRow).join('');
 
   const fmtAum = (v: number | null | undefined) => v == null ? '<span style="color:#9ca3af;font-style:italic">Data Not Published</span>' : fmtUSD(v);
   const etfRowsHTML = etf.rows.map(r => `
@@ -145,13 +147,23 @@ function buildHTML(note: DailyNoteData): string {
   </table>
 
   <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 10px 4px">Funding, Liquidation and Leverage</div>
-  <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:4px">
+  <div style="font-size:10px;color:#6b7280;padding:0 10px 4px">BTC & ETH, The Block (Binance)</div>
+  <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:10px">
     <tr>
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:left"></th>
-      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">Annualised % today</th>
-      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">Annualised % 7d ago</th>
+      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">Latest</th>
+      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">7 days ago</th>
     </tr>
-    ${fundingRowsHTML}
+    ${fundingRowsBlock}
+  </table>
+  <div style="font-size:10px;color:#6b7280;padding:0 10px 4px">SOL, XRP & HYPE, Coinalyze</div>
+  <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:10px">
+    <tr>
+      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:left"></th>
+      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">Latest</th>
+      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">7 days ago</th>
+    </tr>
+    ${fundingRowsCoinalyze}
   </table>
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:16px">
     <tr>
