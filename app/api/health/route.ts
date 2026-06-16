@@ -98,21 +98,29 @@ async function checkTheBlock(): Promise<FeedResult> {
   }
 }
 
-// Farside / Apify: live actor run, daily ETF data.
+// Farside / Apify: check last run status + recency, without triggering a new run.
 async function checkFarside(): Promise<FeedResult> {
   const base = { key: 'farside', name: 'Farside / Apify (SOL ETF flows)' };
   try {
     if (!ACTOR_ID || !APIFY_TOKEN) return { ...base, status: 'down', detail: 'Apify credentials not configured', ageMinutes: null };
-    const runUrl = `https://api.apify.com/v2/acts/${ACTOR_ID}/run-sync?token=${APIFY_TOKEN}&outputRecordKey=OUTPUT&timeout=45`;
-    const res = await fetch(runUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}), cache: 'no-store' });
-    if (!res.ok) return { ...base, status: 'down', detail: `Apify run returned HTTP ${res.status}`, ageMinutes: null };
-    const data = await res.json();
-    if (data && data.btc) {
-      return { ...base, status: 'operational', detail: 'Actor returned ETF data for latest trading day', ageMinutes: null };
+    // Query the most recent run for this actor instead of starting a new one.
+    const res = await fetch(`https://api.apify.com/v2/acts/${ACTOR_ID}/runs/last?token=${APIFY_TOKEN}`, { cache: 'no-store' });
+    if (!res.ok) return { ...base, status: 'down', detail: `Apify API returned HTTP ${res.status}`, ageMinutes: null };
+    const json = await res.json();
+    const run = json?.data;
+    if (!run) return { ...base, status: 'down', detail: 'No prior actor run found', ageMinutes: null };
+    const finishedAt = run.finishedAt ? new Date(run.finishedAt).getTime() : null;
+    const ageMinutes = finishedAt ? Math.round((Date.now() - finishedAt) / 60000) : null;
+    if (run.status !== 'SUCCEEDED') {
+      return { ...base, status: 'down', detail: `Last actor run status: ${run.status}`, ageMinutes };
     }
-    return { ...base, status: 'down', detail: 'Actor ran but returned no ETF data', ageMinutes: null };
+    // ETF data is daily; flag if the last successful run is more than ~48h old.
+    if (ageMinutes !== null && ageMinutes > 2880) {
+      return { ...base, status: 'stale', detail: `Last successful run was ${Math.round(ageMinutes / 60)}h ago`, ageMinutes };
+    }
+    return { ...base, status: 'operational', detail: `Last run succeeded${ageMinutes !== null ? `, ${ageMinutes < 60 ? ageMinutes + ' min' : Math.round(ageMinutes / 60) + 'h'} ago` : ''}`, ageMinutes };
   } catch (e: any) {
-    return { ...base, status: 'down', detail: `Actor run failed: ${e.message}`, ageMinutes: null };
+    return { ...base, status: 'down', detail: `Apify status check failed: ${e.message}`, ageMinutes: null };
   }
 }
 
