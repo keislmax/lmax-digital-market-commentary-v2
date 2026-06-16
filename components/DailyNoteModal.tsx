@@ -240,7 +240,7 @@ function buildHTML(note: DailyNoteData): string {
 
   <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:28px;width:100%">
     <tr>
-      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding BTC/ETH: The Block (7DMA, median of active exchanges). Funding SOL/XRP/HYPE: LMAX calculation from Coinalyze daily rates, 7-day average annualised.</i></td>
+      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are 7-day averages shown as a percentage. BTC & ETH from The Block (Binance exchange). SOL, XRP & HYPE calculated from Coinalyze daily rates. The two sources use slightly different calculation bases.</i>
     </tr>
   </table>
 </div>`;
