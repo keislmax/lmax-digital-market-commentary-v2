@@ -19,7 +19,7 @@ type ChartAsset = typeof CHART_ASSETS[number];
 const BLOCK_ASSETS = ['BTC', 'ETH'] as const;
 type BlockAsset = typeof BLOCK_ASSETS[number];
 
-const LIQ_COVERAGE = 'BTC/ETH/SOL/XRP, major perp contracts: Binance, Bybit, OKX, Deribit, BitMEX, Kraken';
+const LIQ_COVERAGE = 'Sum across BTC/ETH/SOL/XRP on major perp venues (Binance, Bybit, OKX, Deribit, BitMEX, Kraken), computed aggregate. Source: Coinalyze.';
 
 function fmtUSD(v: number) {
   const abs = Math.abs(v);
@@ -316,7 +316,7 @@ function BlockOICard({ tb, loading }: { tb: any; loading: boolean }) {
         formatValue={fmtUSD}
         onHoverChange={(v, l) => v !== null ? setHovered({ value: v, label: l || '' }) : setHovered(null)}
       />
-      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 6 }}>All exchanges aggregate, daily</div>
+      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 6 }}>Sum of all exchanges, computed aggregate. Source: The Block (per-exchange).</div>
     </div>
   );
 }
@@ -533,7 +533,7 @@ function BlockVolCard({ tb, loading }: { tb: any; loading: boolean }) {
           </div>
         ))}
       </div>
-      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginBottom: 3 }}>1M ATM implied vol, last 90 days</div>
+      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginBottom: 3 }}>1M ATM implied vol, last 90 days. Options OI is sum of all venues (computed aggregate).</div>
       <Sparkline data={values} color="#7c3aed" height={48} labels={labels} formatValue={v => v.toFixed(1)} />
     </div>
   );
@@ -575,7 +575,7 @@ function BlockETFCard({ tb, etfFarside, loading }: { tb: any; etfFarside: any; l
         {loading || flow == null ? '...' : (flow >= 0 ? '+' : '') + fmtUSD(flow).replace('$-', '-$')}
       </div>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
-        {flows?.latestFlowTs ? `Latest daily net flow, ${fmtDate(flows.latestFlowTs)}` : 'Latest daily net flow'}
+        {flows?.latestFlowTs ? `Net flow across all funds, ${fmtDate(flows.latestFlowTs)} (computed aggregate)` : 'Net flow across all funds (computed aggregate)'}
       </div>
       {movers.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 8 }}>
@@ -589,7 +589,7 @@ function BlockETFCard({ tb, etfFarside, loading }: { tb: any; etfFarside: any; l
       )}
       {aum?.latest != null && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 6, marginBottom: 8 }}>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM, sum of all funds (computed aggregate)</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 13, fontWeight: 600 }}>{fmtUSD(aum.latest)}</span>
             <Badge value={pctChange(aum.latest, aum.sevenDaysAgo)} />
@@ -618,7 +618,7 @@ function BlockMacroCard({ tb, loading }: { tb: any; loading: boolean }) {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
         <Badge value={pctChange(sc?.latest, sc?.sevenDaysAgo)} />
-        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total stablecoin supply, 7d</span>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total supply, sum of all stablecoins (computed aggregate)</span>
       </div>
       <Sparkline data={values} color="#16a34a" height={44} labels={labels} formatValue={fmtUSD} />
       <div style={{ borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -888,7 +888,7 @@ export default function Dashboard() {
             chartsByAsset={spotVolumeCharts}
             color="#7c3aed" formatValue={fmtUSD}
             timeframes={SPOT_TIMEFRAMES}
-            footer="BTC, ETH, SOL, XRP spot volume, all exchanges"
+            footer="Sum of BTC, ETH, SOL, XRP spot volume across all exchanges, computed aggregate. Source: CoinGecko."
           />
         </div>
 
