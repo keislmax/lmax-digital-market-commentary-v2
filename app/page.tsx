@@ -7,6 +7,7 @@ import { timeAgo, formatUSD } from '@/lib/utils';
 import FearGreedCard from '@/components/FearGreedCard';
 import OptionsCard from '@/components/OptionsCard';
 import DailyNoteModal from '@/components/DailyNoteModal';
+import HealthCheckPanel from '@/components/HealthCheckPanel';
 
 const REFRESH_INTERVAL = 5 * 60 * 1000;
 const TIMEFRAMES = ['24h', '7d', '30d', '90d', '1y'] as const;
@@ -729,6 +730,7 @@ export default function Dashboard() {
           </div>
         )}
 
+        <HealthCheckPanel />
         {data && <RegimeBar data={data} />}
         <HeadlinesCard news={tb?.news || []} />
 
