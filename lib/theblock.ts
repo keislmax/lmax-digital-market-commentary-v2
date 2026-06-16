@@ -257,30 +257,33 @@ function perSeriesMetric(chart: ParsedChart | null, historyPoints = 90) {
   return { description: chart.description, series: out };
 }
 
-// Funding headline: median of active exchanges only. A series counts as
-// active if its latest datapoint is within 7 days of the freshest series
-// (this automatically excludes dYdX V3, which stopped updating).
+// Funding: per-exchange 7-day-average series from The Block, dYdX V3 excluded.
+// No aggregation, no median — each line is a directly-verifiable exchange rate.
 function fundingMetric(chart: ParsedChart | null) {
-  const per = perSeriesMetric(chart, 90);
+  const per = perSeriesMetric(chart, 365);
   if (!per) return null;
-  const allTs = Object.values(per.series).map((s) => s.latestTs ?? 0);
-  const maxTs = Math.max(...allTs, 0);
-  const activeCutoff = maxTs - 7 * 86400;
-  const activeLatest: number[] = [];
-  const active7d: number[] = [];
-  const perExchange: Record<string, number | null> = {};
+  const EXCLUDE = new Set(['dYdX V3']);
+  const exchanges: Record<string, {
+    latest: number | null;
+    sevenDaysAgo: number | null;
+    thirtyDaysAgo: number | null;
+    history: RawPoint[];
+  }> = {};
+  let refHistory: RawPoint[] = [];
   for (const [name, s] of Object.entries(per.series)) {
-    const isActive = (s.latestTs ?? 0) >= activeCutoff;
-    perExchange[name] = isActive ? s.latest : null;
-    if (isActive && typeof s.latest === "number") activeLatest.push(s.latest);
-    if (isActive && typeof s.sevenDaysAgo === "number") active7d.push(s.sevenDaysAgo);
+    if (EXCLUDE.has(name)) continue;
+    exchanges[name] = {
+      latest: s.latest,
+      sevenDaysAgo: s.sevenDaysAgo,
+      thirtyDaysAgo: s.thirtyDaysAgo,
+      history: s.history,
+    };
+    if (s.history.length > refHistory.length) refHistory = s.history;
   }
   return {
     description: per.description,
-    headline: median(activeLatest),
-    headline7dAgo: median(active7d),
-    perExchange,
-    latestTs: maxTs || null,
+    exchanges,
+    latestTs: refHistory.length ? refHistory[refHistory.length - 1].Timestamp : null,
   };
 }
 
