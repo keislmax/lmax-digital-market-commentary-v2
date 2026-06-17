@@ -52,9 +52,9 @@ const SECTION: React.CSSProperties = {
 
 interface DailyNoteData {
   dateStr: string;
-  spot: { rows: any[]; stablecoins: number | null; rwa: number | null; btcDominance: number | null };
+  spot: { rows: any[]; stablecoins: number | null; rwa: number | null; btcDominance: number | null; fearGreed: number | null; fearGreedLabel: string | null };
   funding: { rows: any[]; totalLiqs: number | null; longsLiqs: number | null; shortsLiqs: number | null };
-  options: { btcIv7: number | null; btcRv7: number | null; btcIv30: number | null; btcRv30: number | null; ethIv7: number | null; ethRv7: number | null; ethIv30: number | null; ethRv30: number | null; optOiBtc: number | null; optOiEth: number | null };
+  options: { btcIv7: number | null; btcRv7: number | null; btcIv30: number | null; btcRv30: number | null; ethIv7: number | null; ethRv7: number | null; ethIv30: number | null; ethRv30: number | null; optOiBtc: number | null; optOiEth: number | null; dvol: number | null; skew25d: number | null };
   etf: { rows: any[]; strategyValue: number | null; strategyHoldings: number | null; strategyAvgPrice: number | null };
 }
 
