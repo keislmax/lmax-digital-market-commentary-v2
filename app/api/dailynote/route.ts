@@ -51,7 +51,7 @@ function coinalyzeFundingSnapshot(current: number | undefined, history7d: { t: n
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { prices: priceMap, theblock: tb, coinalyze: c, etf: etfFarside } = body;
+    const { prices: priceMap, theblock: tb, coinalyze: c, etf: etfFarside, feargreed: fg, deribit: db } = body;
 
     const prices = priceMap?.prices || {};
     const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP', 'HYPE'] as const;
@@ -80,6 +80,9 @@ export async function POST(req: Request) {
     const stablecoins = tb?.stablecoins?.latest ?? null;
     const rwa = tb?.rwa?.latest ?? null;
     const btcDom = priceMap?.btcDominance ?? null;
+    // Fear & Greed (Alternative.me shape: current.value + classification)
+    const fgValue = fg?.current?.value ?? fg?.value ?? null;
+    const fgLabel = fg?.current?.value_classification ?? fg?.current?.classification ?? fg?.value_classification ?? null;
 
     // ---- Section 2: Funding, liquidation and leverage ----
     const solFunding = coinalyzeFundingSnapshot(
@@ -117,6 +120,9 @@ const xrpFunding = coinalyzeFundingSnapshot(
     const ethIv30 = tb?.options?.ivEth?.series?.['ATM 30']?.latest ?? null;
     const optOiBtc = tb?.options?.oiBtc?.latest ?? null;
     const optOiEth = tb?.options?.oiEth?.latest ?? null;
+    // Deribit additions: BTC DVOL (implied vol index) and 25-delta skew
+    const dvol = db?.dvol?.current ?? null;
+    const skew25d = db?.skew?.BTC?.value25d ?? db?.skew?.value25d ?? null;
 
     // ---- Section 4: ETF ----
     const etfRows = [
@@ -137,9 +143,9 @@ const xrpFunding = coinalyzeFundingSnapshot(
 
     return NextResponse.json({
       dateStr,
-      spot: { rows: spotRows, stablecoins, rwa, btcDominance: btcDom },
+      spot: { rows: spotRows, stablecoins, rwa, btcDominance: btcDom, fearGreed: fgValue, fearGreedLabel: fgLabel },
       funding: { rows: fundingRows, totalLiqs, longsLiqs, shortsLiqs },
-      options: { btcIv7, btcRv7, btcIv30, btcRv30, ethIv7, ethRv7, ethIv30, ethRv30, optOiBtc, optOiEth },
+      options: { btcIv7, btcRv7, btcIv30, btcRv30, ethIv7, ethRv7, ethIv30, ethRv30, optOiBtc, optOiEth, dvol, skew25d },
       etf: { rows: etfRows, strategyValue, strategyHoldings, strategyAvgPrice },
     });
   } catch (e) {
