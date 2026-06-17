@@ -140,8 +140,12 @@ function buildHTML(note: DailyNoteData): string {
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmtUSD(spot.rwa)}</td>
     </tr>
     <tr>
-      <td style="padding:4px 10px;font-size:12px;color:#6b7280">BTC Dominance</td>
-      <td style="padding:4px 10px;font-size:12px;text-align:right;font-weight:600">${spot.btcDominance != null ? spot.btcDominance.toFixed(1) + '%' : '—'}</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">BTC Dominance</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${spot.btcDominance != null ? spot.btcDominance.toFixed(1) + '%' : '—'}</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 10px;font-size:12px;color:#6b7280">Fear &amp; Greed Index</td>
+      <td style="padding:4px 10px;font-size:12px;text-align:right;font-weight:600">${spot.fearGreed != null ? spot.fearGreed + (spot.fearGreedLabel ? ' (' + spot.fearGreedLabel + ')' : '') : '—'}</td>
     </tr>
   </table>
 
@@ -207,8 +211,16 @@ function buildHTML(note: DailyNoteData): string {
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmtUSD(options.optOiBtc)}</td>
     </tr>
     <tr>
-      <td style="padding:4px 10px;font-size:12px;color:#6b7280">Aggregate Options OI (ETH)</td>
-      <td style="padding:4px 10px;font-size:12px;text-align:right;font-weight:600">${fmtUSD(options.optOiEth)}</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">Aggregate Options OI (ETH)</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmtUSD(options.optOiEth)}</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">BTC DVOL (30-day implied vol index)</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${options.dvol != null ? fmt(options.dvol) + '%' : '—'}</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 10px;font-size:12px;color:#6b7280">BTC 25D Put/Call Skew</td>
+      <td style="padding:4px 10px;font-size:12px;text-align:right;font-weight:600">${options.skew25d != null ? (options.skew25d >= 0 ? '+' : '') + options.skew25d.toFixed(1) : '—'}</td>
     </tr>
   </table>
 
