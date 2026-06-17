@@ -69,14 +69,13 @@ function buildHTML(note: DailyNoteData): string {
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;color:${pctColor(r.change1m)}">${fmtPct(r.change1m)}</td>
     </tr>`).join('');
 
-  const fundingRow = (r: any) => `
+  // Single merged funding table, all five assets. Source attribution moved to footnote.
+  const fundingRowsHTML = funding.rows.map((r: any) => `
     <tr>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;font-weight:600">${r.asset}</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;color:${pctColor(r.today)}">${r.today != null ? fmtPct(r.today) : '—'}</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;color:${pctColor(r.sevenDaysAgo)}">${r.sevenDaysAgo != null ? fmtPct(r.sevenDaysAgo) : '—'}</td>
-    </tr>`;
-  const fundingRowsBlock = funding.rows.filter((r: any) => r.source === 'block').map(fundingRow).join('');
-  const fundingRowsCoinalyze = funding.rows.filter((r: any) => r.source === 'coinalyze').map(fundingRow).join('');
+    </tr>`).join('');
 
   const fmtAum = (v: number | null | undefined) => v == null ? '<span style="color:#9ca3af;font-style:italic">Data Not Published</span>' : fmtUSD(v);
   const etfRowsHTML = etf.rows.map(r => `
@@ -147,27 +146,17 @@ function buildHTML(note: DailyNoteData): string {
   </table>
 
   <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 10px 4px">Funding, Liquidation and Leverage</div>
-  <div style="font-size:10px;color:#6b7280;padding:0 10px 4px">BTC & ETH, The Block (Binance)</div>
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:10px">
     <tr>
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:left"></th>
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">Latest</th>
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">7 days ago</th>
     </tr>
-    ${fundingRowsBlock}
-  </table>
-  <div style="font-size:10px;color:#6b7280;padding:0 10px 4px">SOL, XRP & HYPE, Coinalyze</div>
-  <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:10px">
-    <tr>
-      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:left"></th>
-      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">Latest</th>
-      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">7 days ago</th>
-    </tr>
-    ${fundingRowsCoinalyze}
+    ${fundingRowsHTML}
   </table>
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:16px">
     <tr>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">Total Liquidations 24H</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">Total Liquidations 24H, no crying at the casino</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmtUSD(funding.totalLiqs)}</td>
     </tr>
     <tr>
@@ -175,8 +164,16 @@ function buildHTML(note: DailyNoteData): string {
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmtUSD(funding.longsLiqs)}</td>
     </tr>
     <tr>
-      <td style="padding:4px 10px;font-size:12px;color:#6b7280">Shorts Liquidated</td>
-      <td style="padding:4px 10px;font-size:12px;text-align:right;font-weight:600">${fmtUSD(funding.shortsLiqs)}</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">Shorts Liquidated</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmtUSD(funding.shortsLiqs)}</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">Number of Traders Liquidated</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700"><b>XXX (enter from Coinglass)</b></td>
+    </tr>
+    <tr>
+      <td style="padding:4px 10px;font-size:12px;color:#6b7280">Largest Single Liquidation Order</td>
+      <td style="padding:4px 10px;font-size:12px;text-align:right;font-weight:700"><b>XXX (enter from Coinglass)</b></td>
     </tr>
   </table>
 
@@ -240,7 +237,7 @@ function buildHTML(note: DailyNoteData): string {
 
   <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:28px;width:100%">
     <tr>
-      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are 7-day averages shown as a percentage. BTC & ETH from The Block (Binance exchange). SOL, XRP & HYPE calculated from Coinalyze daily rates. The two sources use slightly different calculation bases.</i>
+      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are 7-day averages shown as a percentage. BTC & ETH from The Block (Binance exchange). SOL, XRP & HYPE calculated from Coinalyze daily rates. The two sources use slightly different calculation bases. Liquidations from Coinalyze. Trader count and largest single order from Coinglass.</i></td>
     </tr>
   </table>
 </div>`;
