@@ -38,20 +38,32 @@ async function fetchDailyCloses(coinId: string): Promise<number[]> {
   } catch { return []; }
 }
 
-// SOL/XRP funding from Coinalyze daily history: mean of last 7 daily
-// rates annualised (x3 settlements x365), and the prior week's mean.
-function coinalyzeFundingSnapshot(current: number | undefined, history7d: { t: number; v: number }[] | undefined) {
-  const today = typeof current === 'number' ? current * 3 * 365 : null;
-  const pts = (history7d || []).filter(p => typeof p?.v === 'number');
-  const oldest = pts.length ? pts[0] : null;
-  const sevenDaysAgo = oldest ? oldest.v * 3 * 365 : null;
+// Funding, single source (Coinalyze, all five assets). The chartsByAsset
+// series stores a mean funding rate across exchanges per timestamp — a
+// computed aggregate, same caveat that triggered the original median-headline
+// removal, just on a different vendor. "Today" reads the latest 24h point;
+// "7 days ago" looks back from the 90d series so it has enough history
+// regardless of the dashboard's currently-selected chart timeframe.
+function coinalyzeFundingRow(chartsByAsset: any, asset: string) {
+  const series90d: { t: number; v: number }[] = chartsByAsset?.[asset]?.['90d'] || chartsByAsset?.[asset]?.['1y'] || [];
+  const series24h: { t: number; v: number }[] = chartsByAsset?.[asset]?.['24h'] || [];
+  const todayRaw = series24h.length ? series24h[series24h.length - 1].v : (series90d.length ? series90d[series90d.length - 1].v : null);
+  const today = todayRaw != null ? todayRaw * 3 * 365 : null; // annualized: 3 settlements/day x 365, matches prior note scale
+  let sevenDaysAgoRaw: number | null = null;
+  if (series90d.length) {
+    const cutoff = series90d[series90d.length - 1].t - 7 * 86400;
+    for (let i = series90d.length - 1; i >= 0; i--) {
+      if (series90d[i].t <= cutoff) { sevenDaysAgoRaw = series90d[i].v; break; }
+    }
+  }
+  const sevenDaysAgo = sevenDaysAgoRaw != null ? sevenDaysAgoRaw * 3 * 365 : null;
   return { today, sevenDaysAgo };
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { prices: priceMap, theblock: tb, coinalyze: c, etf: etfFarside, feargreed: fg, deribit: db } = body;
+    const { prices: priceMap, coinalyze: c, etf: etfFarside, feargreed: fg, deribit: db, macro } = body;
 
     const prices = priceMap?.prices || {};
     const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP', 'HYPE'] as const;
@@ -77,64 +89,53 @@ export async function POST(req: Request) {
         change1m: p?.change30d ?? null,
       };
     });
-    const stablecoins = tb?.stablecoins?.latest ?? null;
-    const rwa = tb?.rwa?.latest ?? null;
+    // Stablecoins & RWA now from DefiLlama (via macro), BTC dominance still
+    // CoinGecko (unchanged — it was never sourced from The Block).
+    const stablecoins = macro?.stablecoins?.latest ?? null;
+    const rwa = macro?.rwa?.latest ?? null;
     const btcDom = priceMap?.btcDominance ?? null;
-    // Fear & Greed (Alternative.me shape: current.value + classification)
     const fgValue = fg?.current?.value ?? fg?.value ?? null;
     const fgLabel = fg?.current?.value_classification ?? fg?.current?.classification ?? fg?.value_classification ?? null;
 
     // ---- Section 2: Funding, liquidation and leverage ----
-    const solFunding = coinalyzeFundingSnapshot(
-  c?.fundingRate?.byAsset?.SOL,
-  c?.fundingRate?.chartsByAsset?.SOL?.['7d']
-);
-const xrpFunding = coinalyzeFundingSnapshot(
-  c?.fundingRate?.byAsset?.XRP,
-  c?.fundingRate?.chartsByAsset?.XRP?.['7d']
-);
-    const hypeFunding = coinalyzeFundingSnapshot(
-  c?.fundingRate?.byAsset?.HYPE,
-  c?.fundingRate?.chartsByAsset?.HYPE?.['7d']
-);
-    // BTC/ETH funding from The Block, single benchmark exchange (Binance),
-    // since the per-exchange redesign removed the median headline.
-    const BENCHMARK = 'Binance';
-    const btcBench = tb?.funding?.btc?.exchanges?.[BENCHMARK] ?? null;
-    const ethBench = tb?.funding?.eth?.exchanges?.[BENCHMARK] ?? null;
-    const fundingRows = [
-      { asset: 'BTC', today: btcBench?.latest ?? null, sevenDaysAgo: btcBench?.sevenDaysAgo ?? null, source: 'block' },
-      { asset: 'ETH', today: ethBench?.latest ?? null, sevenDaysAgo: ethBench?.sevenDaysAgo ?? null, source: 'block' },
-      { asset: 'SOL', today: solFunding.today, sevenDaysAgo: solFunding.sevenDaysAgo, source: 'coinalyze' },
-      { asset: 'XRP', today: xrpFunding.today, sevenDaysAgo: xrpFunding.sevenDaysAgo, source: 'coinalyze' },
-      { asset: 'HYPE', today: hypeFunding.today, sevenDaysAgo: hypeFunding.sevenDaysAgo, source: 'coinalyze' },
-    ];
+    // Single source for ALL five assets: Coinalyze (decision: consistency
+    // over per-asset source-mixing now that The Block is fully retired).
+    const fundingRows = ASSETS.map(asset => {
+      const row = coinalyzeFundingRow(c?.fundingRate?.chartsByAsset, asset);
+      return { asset, today: row.today, sevenDaysAgo: row.sevenDaysAgo, source: 'coinalyze' };
+    });
     const totalLiqs = c?.liquidations?.total24h ?? null;
     const longsLiqs = c?.liquidations?.longs24h ?? null;
     const shortsLiqs = c?.liquidations?.shorts24h ?? null;
 
     // ---- Section 3: Options ----
-    const btcIv7 = tb?.options?.ivBtc?.series?.['ATM 7']?.latest ?? null;
-    const btcIv30 = tb?.options?.ivBtc?.series?.['ATM 30']?.latest ?? null;
-    const ethIv7 = tb?.options?.ivEth?.series?.['ATM 7']?.latest ?? null;
-    const ethIv30 = tb?.options?.ivEth?.series?.['ATM 30']?.latest ?? null;
-    const optOiBtc = tb?.options?.oiBtc?.latest ?? null;
-    const optOiEth = tb?.options?.oiEth?.latest ?? null;
-    // Deribit additions: BTC DVOL (implied vol index) and 25-delta skew
+    // The Block's multi-venue ATM vol / realized vol / options OI rows are
+    // removed along with the card. Deribit DVOL, skew, and Deribit-only
+    // options OI remain.
     const dvol = db?.dvol?.current ?? null;
     const skew25d = db?.skew?.BTC?.value25d ?? db?.skew?.value25d ?? null;
+    const optOiBtc = db?.optionsOi?.btcUsd ?? null;
+    const optOiEth = db?.optionsOi?.ethUsd ?? null;
 
     // ---- Section 4: ETF ----
+    // Flows: Farside for all four assets (decision: drop The Block entirely).
+    // AUM: SoSoValue true net assets (decision: true market value, not
+    // Farside's cumulative-net-flow figure). AUM only covers BTC/ETH for now
+    // (SoSoValue's documented coverage); SOL/HYPE AUM shows "Data Not Published".
+    const farsideFlow = (key: 'btc' | 'eth' | 'sol' | 'hype'): number | null => {
+      const v = etfFarside?.[key]?.latest?.total;
+      return typeof v === 'number' ? v * 1e6 : null;
+    };
     const etfRows = [
-      { asset: 'BTC', flow: tb?.etf?.flowsBtc?.latestFlow ?? null, aum: tb?.etf?.aumBtc?.latest ?? null, aum30d: tb?.etf?.aumBtc?.thirtyDaysAgo ?? null },
-      { asset: 'ETH', flow: tb?.etf?.flowsEth?.latestFlow ?? null, aum: tb?.etf?.aumEth?.latest ?? null, aum30d: tb?.etf?.aumEth?.thirtyDaysAgo ?? null },
-      { asset: 'SOL', flow: typeof etfFarside?.sol?.latest?.total === 'number' ? etfFarside.sol.latest.total * 1e6 : null, aum: null, aum30d: null },
-      { asset: 'HYPE', flow: tb?.etf?.flowsHype?.latestFlow ?? null, aum: null, aum30d: null },
+      { asset: 'BTC', flow: farsideFlow('btc'), aum: macro?.etfAum?.btc?.latest ?? null, aum30d: macro?.etfAum?.btc?.thirtyDaysAgo ?? null },
+      { asset: 'ETH', flow: farsideFlow('eth'), aum: macro?.etfAum?.eth?.latest ?? null, aum30d: macro?.etfAum?.eth?.thirtyDaysAgo ?? null },
+      { asset: 'SOL', flow: farsideFlow('sol'), aum: null, aum30d: null },
+      { asset: 'HYPE', flow: farsideFlow('hype'), aum: null, aum30d: null },
     ];
-    const strategyHoldings = tb?.strategy?.series?.['MicroStrategy Bitcoin Holdings']?.latest ?? null;
-    const strategyAvgPrice = tb?.strategy?.series?.['Average BTC Purchase Price']?.latest ?? null;
-    const btcPrice = prices['BTC']?.price ?? null;
-    const strategyValue = strategyHoldings != null && btcPrice != null ? strategyHoldings * btcPrice : null;
+    // Strategy holdings now from CoinGecko treasury data (via macro).
+    const strategyHoldings = macro?.strategy?.holdings ?? null;
+    const strategyAvgPrice = macro?.strategy?.avgPrice ?? null;
+    const strategyValue = macro?.strategy?.valueUsd ?? null;
 
     const dateStr = new Date().toLocaleDateString('en-SG', {
       timeZone: 'Asia/Singapore',
@@ -145,7 +146,7 @@ const xrpFunding = coinalyzeFundingSnapshot(
       dateStr,
       spot: { rows: spotRows, stablecoins, rwa, btcDominance: btcDom, fearGreed: fgValue, fearGreedLabel: fgLabel },
       funding: { rows: fundingRows, totalLiqs, longsLiqs, shortsLiqs },
-      options: { btcIv7, btcRv7, btcIv30, btcRv30, ethIv7, ethRv7, ethIv30, ethRv30, optOiBtc, optOiEth, dvol, skew25d },
+      options: { btcRv7, btcRv30, ethRv7, ethRv30, optOiBtc, optOiEth, dvol, skew25d },
       etf: { rows: etfRows, strategyValue, strategyHoldings, strategyAvgPrice },
     });
   } catch (e) {
