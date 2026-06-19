@@ -20,13 +20,56 @@ interface HealthData {
 }
 
 const LEGEND: { card: string; source: string; composition: string }[] = [
-  { card: 'Spot Performance', source: 'CoinGecko', composition: 'Live spot prices and 1d/7d/30d changes for BTC, ETH, SOL, XRP, HYPE.' },
-  { card: 'Stablecoins / RWA / Dominance', source: 'CoinGecko + The Block', composition: 'Total stablecoin supply and BTC dominance from CoinGecko; tokenised RWA TVL from The Block.' },
-  { card: 'Funding, Liquidation & Leverage', source: 'Coinalyze + The Block', composition: 'BTC/ETH funding from The Block (7DMA, median of active exchanges). SOL/XRP/HYPE funding from LMAX calculation on Coinalyze rates. Liquidations and open interest from Coinalyze across major perp venues.' },
-  { card: 'Options', source: 'The Block + Deribit', composition: 'ATM implied vol and aggregate options OI from The Block. Realised vol computed from CoinGecko price history. 25-delta skew, futures basis, and put/call ratio from Deribit.' },
-  { card: 'ETF Flows & AUM', source: 'The Block + Farside', composition: 'BTC and ETH ETF flows and AUM from The Block. SOL ETF flows from Farside Investors via Apify. SOL/HYPE AUM not published by any source.' },
-  { card: 'Strategy', source: 'The Block', composition: 'Strategy (MicroStrategy) BTC holdings, average cost basis, and total holding value.' },
-  { card: 'Fear & Greed', source: 'Alternative.me', composition: 'Daily crypto Fear & Greed index, current value plus 1d/7d/30d change.' },
+  {
+    card: 'Spot Performance',
+    source: 'CoinGecko',
+    composition: 'Live spot prices and 1d/7d/30d changes for BTC, ETH, SOL, XRP, HYPE.',
+  },
+  {
+    card: 'Stablecoins / RWA / Dominance',
+    source: 'DefiLlama + CoinGecko',
+    composition: 'Total stablecoin supply from DefiLlama (sum of all pegs, computed aggregate). Tokenised RWA TVL from DefiLlama (sum across RWA category). BTC dominance from CoinGecko global data.',
+  },
+  {
+    card: 'Futures Open Interest',
+    source: 'Coinalyze',
+    composition: 'Sum of open interest across major perp venues (Binance, Bybit, OKX, Deribit, BitMEX, Kraken), computed aggregate. Refreshed every ~2 hours via cron.',
+  },
+  {
+    card: 'Funding Rate (Annualized)',
+    source: 'Coinalyze',
+    composition: 'Annualized mean funding rate across major perp venues per asset, computed aggregate. All five assets (BTC, ETH, SOL, XRP, HYPE) from Coinalyze. Refreshed every ~2 hours via cron.',
+  },
+  {
+    card: 'Liquidations',
+    source: 'Coinalyze',
+    composition: 'Sum of longs and shorts liquidated across BTC/ETH/SOL/XRP on major perp venues. Partial coverage: not all exchanges report liquidation data. Refreshed every ~2 hours via cron.',
+  },
+  {
+    card: 'Options · Volatility & Skew',
+    source: 'Deribit',
+    composition: 'DVOL (30-day implied vol index), 25-delta put/call skew, futures basis (BTC & ETH), put/call OI ratio, and options open interest — all from Deribit live API. Options OI is Deribit-only, not a multi-venue aggregate. Realised vol computed from CoinGecko daily closes.',
+  },
+  {
+    card: 'ETF Flows',
+    source: 'Farside Investors',
+    composition: 'BTC, ETH, SOL and HYPE ETF net flows from Farside Investors via Apify scraper. Farside updates after US market close; latest trading day may lag by one calendar day.',
+  },
+  {
+    card: 'ETF AUM',
+    source: 'SoSoValue',
+    composition: 'True market-value net assets for BTC and ETH spot ETFs from SoSoValue. SOL and HYPE AUM not published by any free source.',
+  },
+  {
+    card: 'Strategy',
+    source: 'CoinGecko',
+    composition: 'Strategy (MicroStrategy) BTC holdings and average cost basis from CoinGecko public treasury data. Average price is entry value ÷ holdings as reported by CoinGecko.',
+  },
+  {
+    card: 'Fear & Greed',
+    source: 'Alternative.me',
+    composition: 'Daily crypto Fear & Greed index, current value plus 1d/7d/30d change.',
+  },
 ];
 
 function statusColor(s: string) {
