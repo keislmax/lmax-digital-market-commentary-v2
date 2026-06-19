@@ -140,27 +140,27 @@ function buildHTML(note: DailyNoteData): string {
     </tr>
   </table>
 
-  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 10px 4px">Funding, Liquidation and Leverage</div>
+  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 10px 4px">Funding &amp; Liquidations</div>
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:10px">
     <tr>
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:left"></th>
-      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">Latest</th>
-      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">7 days ago</th>
+      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">Latest Funding Rate</th>
+      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">7D Funding Rate</th>
     </tr>
     ${fundingRowsHTML}
   </table>
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:16px">
     <tr>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">Total Liquidations 24H, no crying at the casino</td>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmtUSD(funding.totalLiqs)}</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700"><b>XXX (enter from Coinglass)</b></td>
     </tr>
     <tr>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">Longs Liquidated</td>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmtUSD(funding.longsLiqs)}</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700"><b>XXX (enter from Coinglass)</b></td>
     </tr>
     <tr>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">Shorts Liquidated</td>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmtUSD(funding.shortsLiqs)}</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700"><b>XXX (enter from Coinglass)</b></td>
     </tr>
     <tr>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">Number of Traders Liquidated</td>
@@ -234,7 +234,7 @@ function buildHTML(note: DailyNoteData): string {
 
   <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:28px;width:100%">
     <tr>
-      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are annualized mean rates across major perp venues per asset, computed aggregate, sourced from Coinalyze for all five assets. Liquidations from Coinalyze. Trader count and largest single order from Coinglass. Stablecoins and RWA TVL from DefiLlama. Strategy holdings from CoinGecko treasury data. ETF flows from Farside Investors; ETF AUM (BTC/ETH) from SoSoValue, true net assets. Options DVOL, skew and open interest from Deribit only, not a multi-venue aggregate.</i></td>
+      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are annualized mean rates across major perp venues per asset, computed aggregate, sourced from Coinalyze for all five assets. All liquidation figures entered manually from Coinglass. Stablecoins and RWA TVL from DefiLlama. Strategy holdings from CoinGecko treasury data. ETF flows from Farside Investors; ETF AUM (BTC/ETH) from SoSoValue, true net assets. Options DVOL, skew and open interest from Deribit only, not a multi-venue aggregate.</i></td>
     </tr>
   </table>
 </div>`;
