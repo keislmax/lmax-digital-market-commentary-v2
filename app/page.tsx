@@ -275,22 +275,79 @@ function ChartCard({ label, source, snapshotValue, sub, change, chartsByAsset, v
   );
 }
 
-// Open Interest, sourced from Coinalyze (decision: keep Coinalyze over
-// CoinGecko to preserve the existing OI history/sparkline; CoinGecko's free
-// derivatives endpoint returns current snapshot only, no history).
+// Open Interest, sourced from Coinalyze. Fuller layout (taller chart + per-asset
+// breakdown) so it sits consistently beside the Funding card. NOTE: values are
+// currently the tracked-majors subset; the all-markets total fix lives in the cron.
 function OpenInterestCard({ c, loading }: { c: any; loading: boolean }) {
-  const current = c?.openInterest?.current ?? 0;
-  const change = c?.openInterest?.change24h;
+  const [tf, setTf] = useState<string>('24h');
+  const [asset, setAsset] = useState<ChartAsset>('ALL');
+  const [hovered, setHovered] = useState<{ value: number; label: string } | null>(null);
+
+  const chartsByAsset = c?.openInterest?.chartsByAsset || {};
+  const assetKey = asset === 'ALL' ? 'total' : asset;
+  const series: any[] = chartsByAsset?.[assetKey]?.[tf] || [];
+  const values = series.map((p: any) => p.v);
+  const labels = series.map((p: any) => tf === '24h' ? fmtTime(p.t) : fmtDate(p.t));
+
+  const lastVal = values.length ? values[values.length - 1] : null;
+  const headline = asset === 'ALL' ? (c?.openInterest?.current ?? lastVal) : lastVal;
+  const tfChange = values.length >= 2 && values[0]
+    ? ((values[values.length - 1] - values[0]) / values[0]) * 100
+    : undefined;
+  const changeShown = asset === 'ALL' && tf === '24h' ? c?.openInterest?.change24h : tfChange;
+
+  const displayValue = hovered ? fmtUSD(hovered.value) : (loading || headline == null ? '...' : fmtUSD(headline));
+
+  const perAsset = (['BTC', 'ETH', 'SOL', 'XRP', 'HYPE'] as const).map(a => {
+    const s = chartsByAsset?.[a]?.['24h'] || chartsByAsset?.[a]?.['7d'] || [];
+    return { asset: a, oi: s.length ? s[s.length - 1].v : null };
+  });
+
   return (
-    <ChartCard
-      label="Futures Open Interest" source="Coinalyze"
-      snapshotValue={loading ? '...' : fmtUSD(current)}
-      change={change}
-      sub="vs 24 hours ago"
-      chartsByAsset={c?.openInterest?.chartsByAsset}
-      color="#2563eb" formatValue={fmtUSD}
-      footer={OI_COVERAGE}
-    />
+    <div className="card" style={{ padding: '14px 16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+        <div style={CARD_TITLE_STYLE}>Futures Open Interest</div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Coinalyze</div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
+        <div>
+          {hovered && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>{hovered.label}</div>}
+          <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1.1 }}>{displayValue}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, minHeight: 18 }}>
+            {!hovered && <Badge value={changeShown} />}
+            {!hovered && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{tf === '24h' ? 'vs 24 hours ago' : `vs ${tf} ago`}</span>}
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 3 }}>
+            {TIMEFRAMES.map(t => (
+              <button key={t} onClick={() => { setTf(t); setHovered(null); }} style={{
+                padding: '2px 7px', borderRadius: 3, fontSize: 10, fontWeight: 600,
+                background: tf === t ? 'var(--accent)' : 'var(--surface2)',
+                color: tf === t ? '#fff' : 'var(--text-muted)',
+                border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+              }}>{t.toUpperCase()}</button>
+            ))}
+          </div>
+          <AssetTabs active={asset} onChange={a => { setAsset(a); setHovered(null); }} />
+        </div>
+      </div>
+      <Sparkline
+        data={values} color="#2563eb" height={120} labels={labels} formatValue={fmtUSD}
+        onHoverChange={(v, l) => v !== null ? setHovered({ value: v, label: l || '' }) : setHovered(null)}
+      />
+      <div style={{ marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+          {perAsset.map(p => (
+            <div key={p.asset} style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>{p.asset}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, marginTop: 3 }}>{p.oi != null ? fmtUSD(p.oi) : '—'}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.4 }}>{OI_COVERAGE}</div>
+    </div>
   );
 }
 
@@ -333,14 +390,20 @@ function FundingCard({ c, loading }: { c: any; loading: boolean }) {
   // Today / 7d-ago / 30d-ago snapshot per asset, derived from the 90d series
   // so the "7d ago" / "30d ago" lookups have enough history regardless of
   // the chart's currently-selected timeframe.
+  // "Today" = Coinalyze live FR AVG (matches coinalyze.net markets page). 7d/30d
+  // ago come from the historical funding series for week/month-over-month trend.
+  const byAsset: Record<string, number> = c?.fundingRate?.byAsset || {};
   const lookback = (name: string, daysAgo: number): number | null => {
+    if (daysAgo === 0) {
+      return typeof byAsset[name] === 'number' ? byAsset[name] : null;
+    }
     const series = chartsByAsset?.[name]?.['90d'] || chartsByAsset?.[name]?.['1y'] || [];
     if (!series.length) return null;
     const cutoff = series[series.length - 1].t - daysAgo * 86400;
     for (let i = series.length - 1; i >= 0; i--) {
       if (series[i].t <= cutoff) return series[i].v;
     }
-    return daysAgo === 0 ? series[series.length - 1].v : null;
+    return null;
   };
 
   return (
