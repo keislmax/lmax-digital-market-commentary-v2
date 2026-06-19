@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
-import { buildTheBlockData } from '@/lib/theblock';
+import {
+  getStablecoins,
+  getRwaTvl,
+  getStrategyHoldings,
+  getOptionsOi,
+  getEtfAum,
+} from '@/lib/sources';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -238,8 +244,6 @@ async function getDeribit() {
   const msArr = [86400000, 7 * 86400000, 30 * 86400000, 90 * 86400000, 365 * 86400000];
   const resArr = [3600, 3600, 86400, 86400, 86400];
 
-  // Each timeframe fetched independently; failures yield an empty chart,
-  // never an exception.
   const fetchVolCharts = async (currency: string) => {
     const out: Record<string, { t: number; v: number }[]> = {};
     const results = await Promise.allSettled(
@@ -261,7 +265,7 @@ async function getDeribit() {
     return out;
   };
 
-  const [btcChartsR, ethChartsR, btcSkewR, ethSkewR, btcBasisR, ethBasisR, btcPutCallR] =
+  const [btcChartsR, ethChartsR, btcSkewR, ethSkewR, btcBasisR, ethBasisR, btcPutCallR, termStructureR, optionsOiR] =
     await Promise.allSettled([
       fetchVolCharts('BTC'),
       fetchVolCharts('ETH'),
@@ -270,6 +274,8 @@ async function getDeribit() {
       calcBasis('BTC'),
       calcBasis('ETH'),
       calcPutCallRatio('BTC'),
+      calcVolTermStructure('BTC'),
+      getOptionsOi(),
     ]);
 
   const btcChartsByTf = btcChartsR.status === 'fulfilled' ? btcChartsR.value : {};
@@ -279,6 +285,10 @@ async function getDeribit() {
   const btcBasis = btcBasisR.status === 'fulfilled' ? btcBasisR.value : { basis: null, expiry: null, daysToExpiry: null };
   const ethBasis = ethBasisR.status === 'fulfilled' ? ethBasisR.value : { basis: null, expiry: null, daysToExpiry: null };
   const btcPutCall = btcPutCallR.status === 'fulfilled' ? btcPutCallR.value : { ratio: null, putOI: null, callOI: null };
+  const termStructure = termStructureR.status === 'fulfilled' ? termStructureR.value : { d7: null, d30: null, d90: null, shape: 'unavailable' };
+  // Deribit-only options OI (decision: show Deribit OI after removing The Block's
+  // multi-venue aggregate; labelled accordingly wherever it's displayed).
+  const optionsOi = optionsOiR.status === 'fulfilled' ? optionsOiR.value : { btcUsd: null, ethUsd: null };
 
   const btc24h = btcChartsByTf['24h'] || [];
   const btcCurrent = btc24h.length ? btc24h[btc24h.length - 1].v : null;
@@ -296,6 +306,8 @@ async function getDeribit() {
     basis: btcBasis,
     ethBasis,
     putCallRatio: btcPutCall,
+    termStructure,
+    optionsOi, // { btcUsd, ethUsd } — Deribit-only, NOT a multi-venue aggregate
     skewDebug: { btc: btcSkew, eth: ethSkew },
     updatedAt: Date.now(),
   };
@@ -346,15 +358,37 @@ async function getSpotVolume() {
   } catch { return null; }
 }
 
+// ---------- Non-Block macro payload ----------
+// Replaces buildTheBlockData(). Pulls stablecoins, RWA, strategy holdings,
+// and ETF AUM from the new sources. Funding is intentionally NOT here:
+// Coinalyze is now the single source for funding across all five assets
+// (see getCoinalyze() above), so the daily-note/card code reads
+// coinalyze.fundingRate.* directly instead of a separate theblock.funding.*.
+async function getMacro() {
+  const [stablecoins, rwa, strategy, etfAum] = await Promise.allSettled([
+    getStablecoins(),
+    getRwaTvl(),
+    getStrategyHoldings(),
+    getEtfAum(),
+  ]);
+  return {
+    stablecoins: stablecoins.status === 'fulfilled' ? stablecoins.value : null,
+    rwa: rwa.status === 'fulfilled' ? rwa.value : null,
+    strategy: strategy.status === 'fulfilled' ? strategy.value : null,
+    etfAum: etfAum.status === 'fulfilled' ? etfAum.value : { btc: { latest: null, thirtyDaysAgo: null }, eth: { latest: null, thirtyDaysAgo: null } },
+    updatedAt: Date.now(),
+  };
+}
+
 export async function GET() {
-  const [coinalyze, deribit, feargreed, etf, prices, spotvolume, theblock] = await Promise.allSettled([
+  const [coinalyze, deribit, feargreed, etf, prices, spotvolume, macro] = await Promise.allSettled([
     getCoinalyze(),
     getDeribit(),
     getFearGreed(),
     getETF(),
     getPrices(),
     getSpotVolume(),
-    buildTheBlockData(),
+    getMacro(),
   ]);
 
   return NextResponse.json({
@@ -364,7 +398,7 @@ export async function GET() {
     etf:        etf.status        === 'fulfilled' ? etf.value        : null,
     prices:     prices.status     === 'fulfilled' ? prices.value     : null,
     spotvolume: spotvolume.status === 'fulfilled' ? spotvolume.value : null,
-    theblock:   theblock.status   === 'fulfilled' ? theblock.value   : null,
+    macro:      macro.status      === 'fulfilled' ? macro.value      : null,
     updatedAt: Date.now(),
   });
 }
