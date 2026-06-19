@@ -20,6 +20,13 @@ function fmtTime(ts: number) {
 function fmtDate(ts: number) {
   return new Date(ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
+function fmtUSD(v: number) {
+  const abs = Math.abs(v);
+  if (abs >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B';
+  if (abs >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
+  if (abs >= 1e3) return '$' + (v / 1e3).toFixed(1) + 'K';
+  return '$' + v.toFixed(2);
+}
 
 function MetricBox({ label, value, sub, valueColor }: { label: string; value: string; sub: string; valueColor?: string }) {
   return (
@@ -97,6 +104,13 @@ export default function OptionsCard({ data, loading }: Props) {
     : pcrValue < 0.8 ? 'Calls dominant, bullish bias'
     : 'Balanced positioning';
 
+  // Options OI (Deribit-only — replaces The Block's multi-venue aggregate
+  // that was removed with the Volatility & Options card).
+  const optionsOi = (data as any)?.optionsOi;
+  const optOiBtc = optionsOi?.btcUsd;
+  const optOiEth = optionsOi?.ethUsd;
+  const optOiValue = sym === 'BTC' ? optOiBtc : optOiEth;
+
   // Sparkline
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 100;
@@ -151,12 +165,17 @@ export default function OptionsCard({ data, loading }: Props) {
   />
 </div>
 
-          <div style={{ marginBottom: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
             <MetricBox
               label="BTC Put/Call OI Ratio"
               value={pcrValue !== null && pcrValue !== undefined ? pcrValue.toFixed(2) : '—'}
               sub={pcrLabel}
               valueColor={pcrColor}
+            />
+            <MetricBox
+              label={`${sym} Options Open Interest`}
+              value={optOiValue != null ? fmtUSD(optOiValue) : '—'}
+              sub="Deribit only, not a multi-venue aggregate"
             />
           </div>
 
