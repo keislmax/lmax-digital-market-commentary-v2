@@ -98,6 +98,69 @@ jobs:
             return results;
           }
 
+          // ---- All-market OI total (matches Coinalyze's headline figure) ----
+          // Coinalyze exposes no single "total OI" endpoint; its site computes the
+          // headline by summing every market. We replicate that: list all perpetual
+          // markets via /future-markets, then sum current OI across all of them in
+          // chunks of 20 (the /open-interest per-call symbol cap). Returns the true
+          // market total plus a per-base-asset breakdown. Fully additive: any failure
+          // returns null and main() falls back to the tracked-subset totalOI.
+          function chunk(arr, n) {
+            const out = [];
+            for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+            return out;
+          }
+
+          async function fetchMarketTotals() {
+            try {
+              const markets = await fetchCoinalyze('/future-markets');
+              if (!Array.isArray(markets) || !markets.length) {
+                console.log('future-markets: no data; skipping market totals');
+                return null;
+              }
+              const perps = markets.filter(m => {
+                if (typeof m.is_perpetual === 'boolean') return m.is_perpetual;
+                const s = (m.symbol || '').toUpperCase();
+                return s.includes('PERP') || s.includes('-PERPETUAL');
+              });
+              const symbols = perps.map(m => m.symbol).filter(Boolean);
+              console.log(`future-markets: ${markets.length} total, ${symbols.length} perpetual`);
+              if (!symbols.length) return null;
+
+              const baseBySymbol = {};
+              for (const m of perps) {
+                const base = (m.base_asset || m.baseAsset || '').toUpperCase();
+                if (m.symbol && base) baseBySymbol[m.symbol] = base;
+              }
+
+              let marketTotalOI = 0;
+              const oiByAssetFull = {};
+              const groups = chunk(symbols, 20);
+              let got = 0;
+              await sleep(4000);
+              for (const g of groups) {
+                const data = await fetchCoinalyze(`/open-interest?symbols=${g.join(',')}&convert_to_usd=true`);
+                if (Array.isArray(data)) {
+                  for (const x of data) {
+                    const v = x.value || 0;
+                    marketTotalOI += v;
+                    const base = baseBySymbol[x.symbol];
+                    if (base) oiByAssetFull[base] = (oiByAssetFull[base] || 0) + v;
+                    got++;
+                  }
+                }
+                await sleep(2000); // ~30 calls/min, comfortably under the 40/min cap
+              }
+              console.log(`market OI: summed ${got} markets -> $${(marketTotalOI/1e9).toFixed(2)}b`);
+              console.log(`oiByAssetFull majors: BTC=${oiByAssetFull.BTC} ETH=${oiByAssetFull.ETH} SOL=${oiByAssetFull.SOL} XRP=${oiByAssetFull.XRP} HYPE=${oiByAssetFull.HYPE}`);
+              if (!marketTotalOI) return null;
+              return { marketTotalOI, oiByAssetFull };
+            } catch (e) {
+              console.log('fetchMarketTotals failed:', e && e.message);
+              return null;
+            }
+          }
+
           function aggregateOI(data) {
             const byTime = {total:{}, BTC:{}, ETH:{}, SOL:{}, XRP:{}, HYPE:{}};
             for (const sym of (data||[])) {
@@ -182,6 +245,10 @@ jobs:
             const fundingCurrent = await fetchByAsset(s => `/funding-rate?symbols=${s}`);
             await sleep(4000);
 
+            console.log('=== Fetching all-market OI total ===');
+            const marketTotals = await fetchMarketTotals();
+            await sleep(4000);
+
             console.log('=== Fetching 24H data (per asset) ===');
             const oiH24   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
             const liqH24  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
@@ -231,7 +298,8 @@ jobs:
             const oiChange24h = totalChart24h.length>=2
               ? ((totalChart24h[totalChart24h.length-1].v - totalChart24h[0].v)/totalChart24h[0].v)*100 : 0;
 
-            console.log('totalOI:', totalOI);
+            console.log('totalOI (subset):', totalOI);
+            console.log('marketTotalOI (all markets):', marketTotals ? marketTotals.marketTotalOI : null);
             console.log('totalLiqs24h:', totalLiqs24h);
             console.log('avgFunding:', avgFunding);
             console.log('fundingByAsset:', JSON.stringify(fundingByAsset));
@@ -240,6 +308,8 @@ jobs:
               totalOI, oiChange24h, avgFunding, fundingByAsset,
               totalLiqs24h, totalLongLiqs24h, totalShortLiqs24h,
               totalVol24h: null,
+              marketTotalOI: marketTotals ? marketTotals.marketTotalOI : null,
+              oiByAssetFull: marketTotals ? marketTotals.oiByAssetFull : null,
               oiCharts, liqCharts, fundCharts,
               updatedAt: Date.now(),
             };
