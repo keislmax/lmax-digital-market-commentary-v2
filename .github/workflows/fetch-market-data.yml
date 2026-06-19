@@ -67,104 +67,86 @@ jobs:
             console.log(`Redis ${key}:`, JSON.stringify(r));
           }
 
-          const ASSET_SYMBOLS = {
+          // ---- Static fallback symbols (used only if dynamic discovery fails for an asset) ----
+          const STATIC_ASSET_SYMBOLS = {
             BTC: ['BTCUSDT_PERP.A','BTCUSD_PERP.0','BTCUSDT_PERP.3','BTC-PERPETUAL.2','BTCUSDT_PERP.4','BTCPERP.6'],
             ETH: ['ETHUSDT_PERP.A','ETHUSD_PERP.0','ETHUSDT_PERP.3','ETH-PERPETUAL.2','ETHUSDT_PERP.4','ETHPERP.6'],
             SOL: ['SOLUSDT_PERP.A','SOLUSDT_PERP.3','SOLUSDT_PERP.4','SOLPERP.6'],
             XRP: ['XRPUSDT_PERP.A','XRPUSDT_PERP.3','XRPUSDT_PERP.4','XRPPERP.6'],
             HYPE: ['HYPEUSDT_PERP.A','HYPEUSDT_PERP.3','HYPEPERP.6','HYPE.H','HYPEUSDT_PERP.4'],
           };
+          const TARGET_ASSETS = ['BTC','ETH','SOL','XRP','HYPE'];
 
-          const ALL_SYMBOLS = Object.values(ASSET_SYMBOLS).flat().join(',');
-
-          function getAsset(symbol) {
-            if (symbol.startsWith('BTC')) return 'BTC';
-            if (symbol.startsWith('ETH')) return 'ETH';
-            if (symbol.startsWith('SOL')) return 'SOL';
-            if (symbol.startsWith('XRP')) return 'XRP';
-            if (symbol.startsWith('HYPE') || symbol === 'HYPE.H') return 'HYPE';
-            return null;
-          }
-
-          async function fetchByAsset(pathFn, sleepMs=8000) {
-            const results = [];
-            await sleep(4000);
-            for (const [asset, syms] of Object.entries(ASSET_SYMBOLS)) {
-              console.log(`  Fetching ${asset}...`);
-              const data = await fetchCoinalyze(pathFn(syms.join(',')));
-              if (data) results.push(...data);
-              await sleep(sleepMs);
-            }
-            return results;
-          }
-
-          // ---- All-market OI total (matches Coinalyze's headline figure) ----
-          // Coinalyze exposes no single "total OI" endpoint; its site computes the
-          // headline by summing every market. We replicate that: list all perpetual
-          // markets via /future-markets, then sum current OI across all of them in
-          // chunks of 20 (the /open-interest per-call symbol cap). Returns the true
-          // market total plus a per-base-asset breakdown. Fully additive: any failure
-          // returns null and main() falls back to the tracked-subset totalOI.
-          function chunk(arr, n) {
-            const out = [];
-            for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
-            return out;
-          }
-
-          async function fetchMarketTotals() {
+          // ---- Dynamic per-asset symbol discovery ----
+          // Replaces the static, hand-picked symbol lists with a live enumeration of
+          // every perpetual market for each of our 5 tracked assets via /future-markets.
+          // This keeps pace with new venue listings automatically instead of silently
+          // drifting stale. Falls back PER-ASSET to the static list above if discovery
+          // fails or an asset returns zero matches, so one bad asset can't break others.
+          // NOTE: scoped to 5 assets only -- this is deliberately NOT the all-market
+          // enumeration that previously caused a timeout; symbol counts here are small
+          // (tens, not thousands).
+          async function discoverAssetSymbols() {
             try {
               const markets = await fetchCoinalyze('/future-markets');
               if (!Array.isArray(markets) || !markets.length) {
-                console.log('future-markets: no data; skipping market totals');
-                return null;
+                console.log('future-markets: no data, using static symbol lists for all assets');
+                return { ...STATIC_ASSET_SYMBOLS };
               }
               const perps = markets.filter(m => {
                 if (typeof m.is_perpetual === 'boolean') return m.is_perpetual;
                 const s = (m.symbol || '').toUpperCase();
                 return s.includes('PERP') || s.includes('-PERPETUAL');
               });
-              const symbols = perps.map(m => m.symbol).filter(Boolean);
-              console.log(`future-markets: ${markets.length} total, ${symbols.length} perpetual`);
-              if (!symbols.length) return null;
-
-              const baseBySymbol = {};
-              for (const m of perps) {
-                const base = (m.base_asset || m.baseAsset || '').toUpperCase();
-                if (m.symbol && base) baseBySymbol[m.symbol] = base;
+              const result = {};
+              for (const asset of TARGET_ASSETS) {
+                const syms = perps
+                  .filter(m => (m.base_asset || m.baseAsset || '').toUpperCase() === asset)
+                  .map(m => m.symbol)
+                  .filter(Boolean);
+                result[asset] = syms.length ? syms : STATIC_ASSET_SYMBOLS[asset];
+                if (!syms.length) console.log(`  ${asset}: no dynamic matches, using static fallback (${STATIC_ASSET_SYMBOLS[asset].length} symbols)`);
               }
-
-              let marketTotalOI = 0;
-              const oiByAssetFull = {};
-              const groups = chunk(symbols, 20);
-              let got = 0;
-              await sleep(4000);
-              for (const g of groups) {
-                const data = await fetchCoinalyze(`/open-interest?symbols=${g.join(',')}&convert_to_usd=true`);
-                if (Array.isArray(data)) {
-                  for (const x of data) {
-                    const v = x.value || 0;
-                    marketTotalOI += v;
-                    const base = baseBySymbol[x.symbol];
-                    if (base) oiByAssetFull[base] = (oiByAssetFull[base] || 0) + v;
-                    got++;
-                  }
-                }
-                await sleep(2000); // ~30 calls/min, comfortably under the 40/min cap
-              }
-              console.log(`market OI: summed ${got} markets -> $${(marketTotalOI/1e9).toFixed(2)}b`);
-              console.log(`oiByAssetFull majors: BTC=${oiByAssetFull.BTC} ETH=${oiByAssetFull.ETH} SOL=${oiByAssetFull.SOL} XRP=${oiByAssetFull.XRP} HYPE=${oiByAssetFull.HYPE}`);
-              if (!marketTotalOI) return null;
-              return { marketTotalOI, oiByAssetFull };
+              return result;
             } catch (e) {
-              console.log('fetchMarketTotals failed:', e && e.message);
-              return null;
+              console.log('discoverAssetSymbols failed, using static symbol lists for all assets:', e && e.message);
+              return { ...STATIC_ASSET_SYMBOLS };
             }
           }
 
-          function aggregateOI(data) {
+          function getAssetFromSymbol(symbol, assetSymbols) {
+            for (const [asset, syms] of Object.entries(assetSymbols)) {
+              if (syms.includes(symbol)) return asset;
+            }
+            return null;
+          }
+
+          // Pacing: each symbol in a multi-symbol request counts as one call against
+          // Coinalyze's 40/min limit (confirmed: a 20-symbol request can consume the
+          // entire per-minute budget in one call). Sleep between per-asset fetches is
+          // scaled to that asset's symbol count so larger assets (more venues) get
+          // proportionally more breathing room. fetchCoinalyze's built-in 62s backoff
+          // on rate-limit responses remains the safety net if pacing estimate is off.
+          function sleepForSymbolCount(n) {
+            return Math.max(8000, n * 700);
+          }
+
+          async function fetchByAsset(assetSymbols, pathFn) {
+            const results = [];
+            await sleep(4000);
+            for (const [asset, syms] of Object.entries(assetSymbols)) {
+              console.log(`  Fetching ${asset}... (${syms.length} symbols)`);
+              const data = await fetchCoinalyze(pathFn(syms.join(',')));
+              if (data) results.push(...data);
+              await sleep(sleepForSymbolCount(syms.length));
+            }
+            return results;
+          }
+
+          function aggregateOI(data, assetSymbols) {
             const byTime = {total:{}, BTC:{}, ETH:{}, SOL:{}, XRP:{}, HYPE:{}};
             for (const sym of (data||[])) {
-              const asset = getAsset(sym.symbol||'');
+              const asset = getAssetFromSymbol(sym.symbol||'', assetSymbols);
               for (const p of (sym.history||[])) {
                 byTime.total[p.t] = (byTime.total[p.t]||0) + p.c;
                 if (asset) byTime[asset][p.t] = (byTime[asset][p.t]||0) + p.c;
@@ -174,10 +156,10 @@ jobs:
             return { total: toArr(byTime.total), BTC: toArr(byTime.BTC), ETH: toArr(byTime.ETH), SOL: toArr(byTime.SOL), XRP: toArr(byTime.XRP), HYPE: toArr(byTime.HYPE) };
           }
 
-          function aggregateLiq(data) {
+          function aggregateLiq(data, assetSymbols) {
             const byTime = {total:{}, BTC:{}, ETH:{}, SOL:{}, XRP:{}, HYPE:{}};
             for (const sym of (data||[])) {
-              const asset = getAsset(sym.symbol||'');
+              const asset = getAssetFromSymbol(sym.symbol||'', assetSymbols);
               for (const p of (sym.history||[])) {
                 if (!byTime.total[p.t]) byTime.total[p.t] = {l:0,s:0};
                 byTime.total[p.t].l += p.l||0;
@@ -193,10 +175,10 @@ jobs:
             return { total: toArr(byTime.total), BTC: toArr(byTime.BTC), ETH: toArr(byTime.ETH), SOL: toArr(byTime.SOL), XRP: toArr(byTime.XRP), HYPE: toArr(byTime.HYPE) };
           }
 
-          function aggregateFund(data) {
+          function aggregateFund(data, assetSymbols) {
             const byTime = {total:{}, BTC:{}, ETH:{}, SOL:{}, XRP:{}, HYPE:{}};
             for (const sym of (data||[])) {
-              const asset = getAsset(sym.symbol||'');
+              const asset = getAssetFromSymbol(sym.symbol||'', assetSymbols);
               for (const p of (sym.history||[])) {
                 if (!byTime.total[p.t]) byTime.total[p.t] = [];
                 byTime.total[p.t].push(p.o);
@@ -212,12 +194,12 @@ jobs:
             return { total: toArr(byTime.total), BTC: toArr(byTime.BTC), ETH: toArr(byTime.ETH), SOL: toArr(byTime.SOL), XRP: toArr(byTime.XRP), HYPE: toArr(byTime.HYPE) };
           }
 
-          function buildCharts(h24, h7d, h30d, h90d, h1y, aggregateFn) {
-            const a24  = aggregateFn(h24);
-            const a7d  = aggregateFn(h7d);
-            const a30d = aggregateFn(h30d);
-            const a90d = aggregateFn(h90d);
-            const a1y  = aggregateFn(h1y);
+          function buildCharts(h24, h7d, h30d, h90d, h1y, aggregateFn, assetSymbols) {
+            const a24  = aggregateFn(h24, assetSymbols);
+            const a7d  = aggregateFn(h7d, assetSymbols);
+            const a30d = aggregateFn(h30d, assetSymbols);
+            const a90d = aggregateFn(h90d, assetSymbols);
+            const a1y  = aggregateFn(h1y, assetSymbols);
             const result = {};
             for (const asset of ['total','BTC','ETH','SOL','XRP','HYPE']) {
               result[asset] = {
@@ -239,40 +221,44 @@ jobs:
             const from1y  = ago(365*86400);
             const to = nowSec();
 
+            console.log('=== Discovering per-asset symbols (live, falls back to static per-asset) ===');
+            const ASSET_SYMBOLS = await discoverAssetSymbols();
+            for (const [asset, syms] of Object.entries(ASSET_SYMBOLS)) {
+              console.log(`  ${asset}: ${syms.length} symbols`);
+            }
+            const ALL_SYMBOLS = Object.values(ASSET_SYMBOLS).flat().join(',');
+            await sleep(4000);
+
             console.log('=== Fetching current snapshots ===');
             const oiCurrent      = await fetchCoinalyze(`/open-interest?symbols=${ALL_SYMBOLS}&convert_to_usd=true`);
             await sleep(4000);
-            const fundingCurrent = await fetchByAsset(s => `/funding-rate?symbols=${s}`);
-            await sleep(4000);
-
-            console.log('=== Fetching all-market OI total ===');
-            const marketTotals = await fetchMarketTotals();
+            const fundingCurrent = await fetchByAsset(ASSET_SYMBOLS, s => `/funding-rate?symbols=${s}`);
             await sleep(4000);
 
             console.log('=== Fetching 24H data (per asset) ===');
-            const oiH24   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
-            const liqH24  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
-            const fundH24 = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}`);
+            const oiH24   = await fetchByAsset(ASSET_SYMBOLS, s => `/open-interest-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+            const liqH24  = await fetchByAsset(ASSET_SYMBOLS, s => `/liquidation-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+            const fundH24 = await fetchByAsset(ASSET_SYMBOLS, s => `/funding-rate-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}`);
 
             console.log('=== Fetching 7D data (per asset) ===');
-            const oiH7d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
-            const liqH7d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
-            const fundH7d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}`);
+            const oiH7d   = await fetchByAsset(ASSET_SYMBOLS, s => `/open-interest-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
+            const liqH7d  = await fetchByAsset(ASSET_SYMBOLS, s => `/liquidation-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
+            const fundH7d = await fetchByAsset(ASSET_SYMBOLS, s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}`);
 
             console.log('=== Fetching 30D data (per asset) ===');
-            const oiH30d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
-            const liqH30d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
-            const fundH30d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}`);
+            const oiH30d   = await fetchByAsset(ASSET_SYMBOLS, s => `/open-interest-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
+            const liqH30d  = await fetchByAsset(ASSET_SYMBOLS, s => `/liquidation-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
+            const fundH30d = await fetchByAsset(ASSET_SYMBOLS, s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}`);
 
             console.log('=== Fetching 90D data (per asset) ===');
-            const oiH90d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
-            const liqH90d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
-            const fundH90d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}`);
+            const oiH90d   = await fetchByAsset(ASSET_SYMBOLS, s => `/open-interest-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
+            const liqH90d  = await fetchByAsset(ASSET_SYMBOLS, s => `/liquidation-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
+            const fundH90d = await fetchByAsset(ASSET_SYMBOLS, s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}`);
 
             console.log('=== Fetching 1Y data (per asset) ===');
-            const oiH1y   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
-            const liqH1y  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
-            const fundH1y = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}`);
+            const oiH1y   = await fetchByAsset(ASSET_SYMBOLS, s => `/open-interest-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
+            const liqH1y  = await fetchByAsset(ASSET_SYMBOLS, s => `/liquidation-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
+            const fundH1y = await fetchByAsset(ASSET_SYMBOLS, s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}`);
 
             console.log('=== Aggregating ===');
             const totalOI = (oiCurrent||[]).reduce((s,x)=>s+(x.value||0),0);
@@ -286,9 +272,9 @@ jobs:
                 ? rates.reduce((s,f)=>s+(f.value||0),0)/rates.length : 0;
             }
 
-            const oiCharts   = buildCharts(oiH24,   oiH7d,   oiH30d,   oiH90d,   oiH1y,   aggregateOI);
-            const liqCharts  = buildCharts(liqH24,  liqH7d,  liqH30d,  liqH90d,  liqH1y,  aggregateLiq);
-            const fundCharts = buildCharts(fundH24, fundH7d, fundH30d, fundH90d, fundH1y, aggregateFund);
+            const oiCharts   = buildCharts(oiH24,   oiH7d,   oiH30d,   oiH90d,   oiH1y,   aggregateOI,   ASSET_SYMBOLS);
+            const liqCharts  = buildCharts(liqH24,  liqH7d,  liqH30d,  liqH90d,  liqH1y,  aggregateLiq,  ASSET_SYMBOLS);
+            const fundCharts = buildCharts(fundH24, fundH7d, fundH30d, fundH90d, fundH1y, aggregateFund, ASSET_SYMBOLS);
 
             const totalChart24h     = oiCharts.total['24h'];
             const liqTotal24h       = liqCharts.total['24h'];
@@ -298,18 +284,17 @@ jobs:
             const oiChange24h = totalChart24h.length>=2
               ? ((totalChart24h[totalChart24h.length-1].v - totalChart24h[0].v)/totalChart24h[0].v)*100 : 0;
 
-            console.log('totalOI (subset):', totalOI);
-            console.log('marketTotalOI (all markets):', marketTotals ? marketTotals.marketTotalOI : null);
+            console.log('totalOI:', totalOI);
             console.log('totalLiqs24h:', totalLiqs24h);
             console.log('avgFunding:', avgFunding);
             console.log('fundingByAsset:', JSON.stringify(fundingByAsset));
+            console.log('symbolCounts:', JSON.stringify(Object.fromEntries(Object.entries(ASSET_SYMBOLS).map(([k,v])=>[k,v.length]))));
 
             const result = {
               totalOI, oiChange24h, avgFunding, fundingByAsset,
               totalLiqs24h, totalLongLiqs24h, totalShortLiqs24h,
               totalVol24h: null,
-              marketTotalOI: marketTotals ? marketTotals.marketTotalOI : null,
-              oiByAssetFull: marketTotals ? marketTotals.oiByAssetFull : null,
+              symbolCounts: Object.fromEntries(Object.entries(ASSET_SYMBOLS).map(([k,v])=>[k,v.length])),
               oiCharts, liqCharts, fundCharts,
               updatedAt: Date.now(),
             };
