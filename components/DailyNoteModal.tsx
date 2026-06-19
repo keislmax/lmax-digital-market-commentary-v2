@@ -54,7 +54,7 @@ interface DailyNoteData {
   dateStr: string;
   spot: { rows: any[]; stablecoins: number | null; rwa: number | null; btcDominance: number | null; fearGreed: number | null; fearGreedLabel: string | null };
   funding: { rows: any[]; totalLiqs: number | null; longsLiqs: number | null; shortsLiqs: number | null };
-  options: { btcIv7: number | null; btcRv7: number | null; btcIv30: number | null; btcRv30: number | null; ethIv7: number | null; ethRv7: number | null; ethIv30: number | null; ethRv30: number | null; optOiBtc: number | null; optOiEth: number | null; dvol: number | null; skew25d: number | null };
+  options: { btcRv7: number | null; btcRv30: number | null; ethRv7: number | null; ethRv30: number | null; optOiBtc: number | null; optOiEth: number | null; dvol: number | null; skew25d: number | null };
   etf: { rows: any[]; strategyValue: number | null; strategyHoldings: number | null; strategyAvgPrice: number | null };
 }
 
@@ -69,7 +69,7 @@ function buildHTML(note: DailyNoteData): string {
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;color:${pctColor(r.change1m)}">${fmtPct(r.change1m)}</td>
     </tr>`).join('');
 
-  // Single merged funding table, all five assets. Source attribution moved to footnote.
+  // Single merged funding table, all five assets, single source (Coinalyze).
   const fundingRowsHTML = funding.rows.map((r: any) => `
     <tr>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;font-weight:600">${r.asset}</td>
@@ -110,15 +110,6 @@ function buildHTML(note: DailyNoteData): string {
     <li>&nbsp;</li>
     <li>&nbsp;</li>
   </ul>
-
-  <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-bottom:16px;width:100%;border-bottom:1px solid #e5e7eb">
-    <tr>
-      <td valign="middle" style="padding:0 8px 8px 0;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;white-space:nowrap">Market Data, Brought to you by</td>
-      <td valign="middle" style="padding:0 0 8px 0;width:100%">
-        <a href="https://www.theblock.co/" style="text-decoration:none"><img src="https://market-data-eta.vercel.app/images.png" alt="The Block" height="44" style="height:44px;display:inline-block;border:0" /></a>
-      </td>
-    </tr>
-  </table>
 
   <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 10px 4px">Spot Performance</div>
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:4px">
@@ -185,33 +176,27 @@ function buildHTML(note: DailyNoteData): string {
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:4px">
     <tr>
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:left"></th>
-      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">1W ATM Vol</th>
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">1W Realised Vol</th>
-      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">1M ATM Vol</th>
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">1M Realised Vol</th>
     </tr>
     <tr>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;font-weight:600">BTC</td>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${options.btcIv7 != null ? fmt(options.btcIv7) + '%' : '—'}</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${options.btcRv7 != null ? fmt(options.btcRv7) + '%' : '—'}</td>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${options.btcIv30 != null ? fmt(options.btcIv30) + '%' : '—'}</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${options.btcRv30 != null ? fmt(options.btcRv30) + '%' : '—'}</td>
     </tr>
     <tr>
       <td style="padding:4px 10px;font-size:12px;font-weight:600">ETH</td>
-      <td style="padding:4px 10px;font-size:12px;text-align:right">${options.ethIv7 != null ? fmt(options.ethIv7) + '%' : '—'}</td>
       <td style="padding:4px 10px;font-size:12px;text-align:right">${options.ethRv7 != null ? fmt(options.ethRv7) + '%' : '—'}</td>
-      <td style="padding:4px 10px;font-size:12px;text-align:right">${options.ethIv30 != null ? fmt(options.ethIv30) + '%' : '—'}</td>
       <td style="padding:4px 10px;font-size:12px;text-align:right">${options.ethRv30 != null ? fmt(options.ethRv30) + '%' : '—'}</td>
     </tr>
   </table>
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:16px">
     <tr>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">Aggregate Options OI (BTC)</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">BTC Options Open Interest (Deribit only)</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmtUSD(options.optOiBtc)}</td>
     </tr>
     <tr>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">Aggregate Options OI (ETH)</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">ETH Options Open Interest (Deribit only)</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmtUSD(options.optOiEth)}</td>
     </tr>
     <tr>
@@ -242,14 +227,14 @@ function buildHTML(note: DailyNoteData): string {
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmtUSD(etf.strategyValue)}</td>
     </tr>
     <tr>
-      <td style="padding:4px 10px;font-size:12px;color:#6b7280">BTC Holdings (avg price $${etf.strategyAvgPrice != null ? etf.strategyAvgPrice.toLocaleString('en-US') : '—'})</td>
+      <td style="padding:4px 10px;font-size:12px;color:#6b7280">BTC Holdings (avg price $${etf.strategyAvgPrice != null ? Math.round(etf.strategyAvgPrice).toLocaleString('en-US') : '—'})</td>
       <td style="padding:4px 10px;font-size:12px;text-align:right;font-weight:600">${etf.strategyHoldings != null ? etf.strategyHoldings.toLocaleString('en-US') + ' BTC' : '—'}</td>
     </tr>
   </table>
 
   <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:28px;width:100%">
     <tr>
-      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are 7-day averages shown as a percentage. BTC & ETH from The Block (Binance exchange). SOL, XRP & HYPE calculated from Coinalyze daily rates. The two sources use slightly different calculation bases. Liquidations from Coinalyze. Trader count and largest single order from Coinglass.</i></td>
+      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are annualized mean rates across major perp venues per asset, computed aggregate, sourced from Coinalyze for all five assets. Liquidations from Coinalyze. Trader count and largest single order from Coinglass. Stablecoins and RWA TVL from DefiLlama. Strategy holdings from CoinGecko treasury data. ETF flows from Farside Investors; ETF AUM (BTC/ETH) from SoSoValue, true net assets. Options DVOL, skew and open interest from Deribit only, not a multi-venue aggregate.</i></td>
     </tr>
   </table>
 </div>`;
