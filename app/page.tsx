@@ -16,10 +16,12 @@ const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP'] as const;
 type Asset = typeof ASSETS[number];
 const CHART_ASSETS = ['ALL', 'BTC', 'ETH', 'SOL', 'XRP'] as const;
 type ChartAsset = typeof CHART_ASSETS[number];
-const BLOCK_ASSETS = ['BTC', 'ETH'] as const;
-type BlockAsset = typeof BLOCK_ASSETS[number];
+const FUND_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP', 'HYPE'] as const;
+type FundAsset = typeof FUND_ASSETS[number];
 
 const LIQ_COVERAGE = 'Sum across BTC/ETH/SOL/XRP on major perp venues (Binance, Bybit, OKX, Deribit, BitMEX, Kraken), computed aggregate. Source: Coinalyze.';
+const OI_COVERAGE = 'Sum across major perp venues (Binance, Bybit, OKX, Deribit, BitMEX, Kraken), computed aggregate. Source: Coinalyze.';
+const FUND_COVERAGE = 'Annualized mean funding rate across major perp venues per asset, computed aggregate. Source: Coinalyze.';
 
 function fmtUSD(v: number) {
   const abs = Math.abs(v);
@@ -34,13 +36,15 @@ function fmtTime(ts: number) {
 function fmtDate(ts: number) {
   return new Date(ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
+// Coinalyze funding values are per-settlement rates; annualize (3 settlements/day
+// x 365) to match the scale shown in the prior dashboard/Daily Note.
+function fmtPct2(v: number | null | undefined): string {
+  if (v == null) return '—';
+  return (v >= 0 ? '+' : '') + (v * 3 * 365).toFixed(2) + '%';
+}
 function pctChange(latest?: number | null, prev?: number | null): number | undefined {
   if (typeof latest !== 'number' || typeof prev !== 'number' || prev === 0) return undefined;
   return ((latest - prev) / Math.abs(prev)) * 100;
-}
-function blockSeries(history?: { Timestamp: number; Result: number }[]) {
-  const h = history || [];
-  return { values: h.map(p => p.Result), labels: h.map(p => fmtDate(p.Timestamp)) };
 }
 
 function Badge({ value }: { value?: number }) {
@@ -55,31 +59,17 @@ function Badge({ value }: { value?: number }) {
   );
 }
 
-function InsightPill({ text, type = 'neutral' }: { text: string; type?: 'bullish' | 'bearish' | 'neutral' | 'warning' }) {
-  const styles: Record<string, React.CSSProperties> = {
-    bullish: { background: '#dcfce7', color: '#166534' },
-    bearish: { background: '#fee2e2', color: '#991b1b' },
-    warning: { background: '#fef9c3', color: '#854d0e' },
-    neutral: { background: 'var(--surface2)', color: 'var(--text-muted)', border: '1px solid var(--border)' },
-  };
-  return (
-    <span style={{
-      fontSize: 11, padding: '2px 8px', borderRadius: 4,
-      display: 'inline-block', marginTop: 5, fontWeight: 500,
-      ...styles[type],
-    }}>{text}</span>
-  );
-}
-
 function calcRegime(data: any): { label: string; color: string; bg: string; border: string; detail: string } {
   const c = data?.coinalyze;
-  const tb = data?.theblock;
   const fg = data?.feargreed;
 
-  const fundingApy = tb?.funding?.btc?.headline ?? 0;
-  const oiLatest = tb?.openInterest?.btc?.latest ?? 0;
-  const oi7d = tb?.openInterest?.btc?.sevenDaysAgo ?? 0;
-  const oiChange7d = pctChange(oiLatest, oi7d) ?? 0;
+  // Annualized funding as a percent (3 settlements/day x 365), same scale the
+  // thresholds below were tuned for (e.g. >10 means >10% APR).
+  const fundingApy = (c?.fundingRate?.byAsset?.BTC ?? 0) * 3 * 365;
+  const oiChart = c?.openInterest?.chartsByAsset?.BTC?.['7d'] || [];
+  const oiLatest = oiChart.length ? oiChart[oiChart.length - 1].v : 0;
+  const oiFirst = oiChart.length ? oiChart[0].v : 0;
+  const oiChange7d = pctChange(oiLatest, oiFirst) ?? 0;
   const longLiqs = c?.liquidations?.longs24h ?? 0;
   const shortLiqs = c?.liquidations?.shorts24h ?? 0;
   const skew = data?.deribit?.skew?.BTC?.value25d ?? 0;
@@ -285,100 +275,84 @@ function ChartCard({ label, source, snapshotValue, sub, change, chartsByAsset, v
   );
 }
 
-function BlockOICard({ tb, loading }: { tb: any; loading: boolean }) {
-  const [asset, setAsset] = useState<BlockAsset>('BTC');
-  const [hovered, setHovered] = useState<{ value: number; label: string } | null>(null);
-  const m = asset === 'BTC' ? tb?.openInterest?.btc : tb?.openInterest?.eth;
-  const { values, labels } = blockSeries(m?.history);
-  const change7d = pctChange(m?.latest, m?.sevenDaysAgo);
-
-  const displayValue = hovered ? fmtUSD(hovered.value) : (loading || m?.latest == null ? '...' : fmtUSD(m.latest));
-
+// Open Interest, sourced from Coinalyze (decision: keep Coinalyze over
+// CoinGecko to preserve the existing OI history/sparkline; CoinGecko's free
+// derivatives endpoint returns current snapshot only, no history).
+function OpenInterestCard({ c, loading }: { c: any; loading: boolean }) {
+  const current = c?.openInterest?.current ?? 0;
+  const change = c?.openInterest?.change24h;
   return (
-    <div className="card" style={{ padding: '14px 16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-        <div style={CARD_TITLE_STYLE}>Futures Open Interest</div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>The Block</div>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
-        <div>
-          {hovered && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>{hovered.label}</div>}
-          <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1.1 }}>{displayValue}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, minHeight: 18 }}>
-            {!hovered && <Badge value={change7d} />}
-            {!hovered && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>vs 7 days ago</span>}
-          </div>
-        </div>
-        <MiniTabs options={BLOCK_ASSETS} active={asset} onChange={v => setAsset(v as BlockAsset)} />
-      </div>
-      <Sparkline
-        data={values} color="#2563eb" height={70} labels={labels}
-        formatValue={fmtUSD}
-        onHoverChange={(v, l) => v !== null ? setHovered({ value: v, label: l || '' }) : setHovered(null)}
-      />
-      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 6 }}>Sum of all exchanges, computed aggregate. Source: The Block (per-exchange).</div>
-    </div>
+    <ChartCard
+      label="Futures Open Interest" source="Coinalyze"
+      snapshotValue={loading ? '...' : fmtUSD(current)}
+      change={change}
+      sub="vs 24 hours ago"
+      chartsByAsset={c?.openInterest?.chartsByAsset}
+      color="#2563eb" formatValue={fmtUSD}
+      footer={OI_COVERAGE}
+    />
   );
 }
 
-const FUNDING_COLORS = ['#2563eb', '#dc2626', '#16a34a', '#7c3aed', '#ea580c', '#0891b2', '#db2777', '#ca8a04'];
-const FUNDING_TIMEFRAMES = [
-  { label: '30D', days: 30 },
-  { label: '90D', days: 90 },
-  { label: '1Y', days: 365 },
-] as const;
+const FUNDING_COLORS = ['#2563eb', '#dc2626', '#16a34a', '#7c3aed', '#ea580c'];
 
-function fmtPct2(v: number | null): string {
-  if (v == null) return '—';
-  return (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
-}
-
-function BlockFundingCard({ tb, loading }: { tb: any; loading: boolean }) {
-  const [asset, setAsset] = useState<BlockAsset>('BTC');
-  const [days, setDays] = useState<number>(90);
+// Funding, sourced from Coinalyze for all five assets (decision: single
+// source for consistency, now that The Block is fully retired). NOTE: this
+// is a mean across whichever exchanges Coinalyze's symbol list covers per
+// asset — a computed aggregate, same caveat that triggered the original
+// funding-card redesign, just on a different vendor. Labelled as such below.
+function FundingCard({ c, loading }: { c: any; loading: boolean }) {
+  const [days, setDays] = useState<number>(30);
   const [hidden, setHidden] = useState<Record<string, boolean>>({});
   const [hover, setHover] = useState<{ x: number; items: { name: string; value: number; color: string }[]; label: string } | null>(null);
 
-  const m = asset === 'BTC' ? tb?.funding?.btc : tb?.funding?.eth;
-  const exchanges: Record<string, any> = m?.exchanges || {};
-  const names = Object.keys(exchanges);
+  const chartsByAsset: Record<string, Record<string, any[]>> = c?.fundingRate?.chartsByAsset || {};
+  const tfKey = days === 30 ? '30d' : days === 90 ? '90d' : '1y';
 
   const colorFor = (i: number) => FUNDING_COLORS[i % FUNDING_COLORS.length];
   const toggle = (name: string) => setHidden(h => ({ ...h, [name]: !h[name] }));
 
-  // Build the windowed series per visible exchange.
-  const now = Math.floor(Date.now() / 1000);
-  const cutoff = now - days * 86400;
-  const lines = names.map((name, i) => {
-    const hist = (exchanges[name]?.history || []).filter((p: any) => p.Timestamp >= cutoff);
-    return { name, color: colorFor(i), points: hist, hidden: !!hidden[name] };
+  const lines = FUND_ASSETS.map((name, i) => {
+    const pts = chartsByAsset?.[name]?.[tfKey] || [];
+    return { name, color: colorFor(i), points: pts, hidden: !!hidden[name] };
   });
 
   const visibleLines = lines.filter(l => !l.hidden && l.points.length > 1);
-  const allValues = visibleLines.flatMap(l => l.points.map((p: any) => p.Result));
+  const allValues = visibleLines.flatMap(l => l.points.map((p: any) => p.v));
   const minV = allValues.length ? Math.min(...allValues) : 0;
   const maxV = allValues.length ? Math.max(...allValues) : 1;
   const range = maxV - minV || 1;
 
-  // Shared timestamp axis from the longest visible line.
   const axisLine = visibleLines.reduce((a, b) => (b.points.length > a.points.length ? b : a), visibleLines[0] || { points: [] });
-  const axisTs: number[] = (axisLine.points || []).map((p: any) => p.Timestamp);
+  const axisTs: number[] = (axisLine.points || []).map((p: any) => p.t);
 
   const W = 400, H = 110;
   const xFor = (i: number, n: number) => n <= 1 ? 0 : (i / (n - 1)) * W;
   const yFor = (v: number) => H - ((v - minV) / range) * (H - 10) - 5;
 
+  // Today / 7d-ago / 30d-ago snapshot per asset, derived from the 90d series
+  // so the "7d ago" / "30d ago" lookups have enough history regardless of
+  // the chart's currently-selected timeframe.
+  const lookback = (name: string, daysAgo: number): number | null => {
+    const series = chartsByAsset?.[name]?.['90d'] || chartsByAsset?.[name]?.['1y'] || [];
+    if (!series.length) return null;
+    const cutoff = series[series.length - 1].t - daysAgo * 86400;
+    for (let i = series.length - 1; i >= 0; i--) {
+      if (series[i].t <= cutoff) return series[i].v;
+    }
+    return daysAgo === 0 ? series[series.length - 1].v : null;
+  };
+
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-        <div style={CARD_TITLE_STYLE}>Funding Rate, 7-Day Avg</div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>The Block</div>
+        <div style={CARD_TITLE_STYLE}>Funding Rate (annualized)</div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Coinalyze</div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <MiniTabs options={BLOCK_ASSETS} active={asset} onChange={v => { setAsset(v as BlockAsset); setHover(null); }} />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
         <div style={{ display: 'flex', gap: 3 }}>
-          {FUNDING_TIMEFRAMES.map(t => (
+          {[{ label: '30D', days: 30 }, { label: '90D', days: 90 }, { label: '1Y', days: 365 }].map(t => (
             <button key={t.label} onClick={() => { setDays(t.days); setHover(null); }} style={{
               padding: '2px 7px', borderRadius: 3, fontSize: 10, fontWeight: 600,
               background: days === t.days ? 'var(--accent)' : 'var(--surface2)',
@@ -389,7 +363,7 @@ function BlockFundingCard({ tb, loading }: { tb: any; loading: boolean }) {
         </div>
       </div>
 
-      {loading || !names.length ? (
+      {loading || !visibleLines.length ? (
         <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
           {loading ? 'Loading...' : 'No data'}
         </div>
@@ -405,19 +379,18 @@ function BlockFundingCard({ tb, loading }: { tb: any; loading: boolean }) {
               const idx = Math.max(0, Math.min(axisTs.length - 1, Math.round((e.clientX - rect.left) / rect.width * (axisTs.length - 1))));
               const ts = axisTs[idx];
               const items = visibleLines.map(l => {
-                const match = l.points.find((p: any) => p.Timestamp === ts) || l.points[Math.min(idx, l.points.length - 1)];
-                return match ? { name: l.name, value: match.Result, color: l.color } : null;
+                const match = l.points.find((p: any) => p.t === ts) || l.points[Math.min(idx, l.points.length - 1)];
+                return match ? { name: l.name, value: match.v, color: l.color } : null;
               }).filter(Boolean) as { name: string; value: number; color: string }[];
               setHover({ x: xFor(idx, axisTs.length), items, label: fmtDate(ts) });
             }}
             onMouseLeave={() => setHover(null)}
           >
-            {/* zero line */}
             {minV < 0 && maxV > 0 && (
               <line x1={0} y1={yFor(0)} x2={W} y2={yFor(0)} stroke="var(--border)" strokeWidth="0.5" strokeDasharray="2,2" />
             )}
             {visibleLines.map(l => {
-              const pts = l.points.map((p: any, i: number) => `${xFor(i, l.points.length)},${yFor(p.Result)}`).join(' ');
+              const pts = l.points.map((p: any, i: number) => `${xFor(i, l.points.length)},${yFor(p.v)}`).join(' ');
               return <polyline key={l.name} points={pts} fill="none" stroke={l.color} strokeWidth="1.3" />;
             })}
             {hover && <line x1={hover.x} y1={0} x2={hover.x} y2={H} stroke="var(--text-muted)" strokeWidth="0.5" strokeDasharray="3,3" />}
@@ -436,7 +409,7 @@ function BlockFundingCard({ tb, loading }: { tb: any; loading: boolean }) {
               {hover.items.sort((a, b) => b.value - a.value).map(it => (
                 <div key={it.name} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                   <span style={{ width: 7, height: 7, borderRadius: '50%', background: it.color, display: 'inline-block' }} />
-                  <span style={{ minWidth: 56 }}>{it.name}</span>
+                  <span style={{ minWidth: 36 }}>{it.name}</span>
                   <span style={{ fontWeight: 600 }}>{fmtPct2(it.value)}</span>
                 </div>
               ))}
@@ -445,10 +418,9 @@ function BlockFundingCard({ tb, loading }: { tb: any; loading: boolean }) {
         </div>
       )}
 
-      {/* Toggleable legend */}
-      {names.length > 0 && (
+      {FUND_ASSETS.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', marginTop: 8 }}>
-          {names.map((name, i) => (
+          {FUND_ASSETS.map((name, i) => (
             <button key={name} onClick={() => toggle(name)} style={{
               display: 'flex', alignItems: 'center', gap: 4,
               background: 'none', border: 'none', cursor: 'pointer', padding: 0,
@@ -461,121 +433,74 @@ function BlockFundingCard({ tb, loading }: { tb: any; loading: boolean }) {
         </div>
       )}
 
-      {/* Per-exchange today / 7d / 30d table */}
-      {names.length > 0 && (
-        <div style={{ marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '3px 12px', fontSize: 10 }}>
-            <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Exchange</span>
-            <span style={{ color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>Today</span>
-            <span style={{ color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>7d ago</span>
-            <span style={{ color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>30d ago</span>
-            {names.map((name, i) => {
-              const ex = exchanges[name];
-              return (
-                <React.Fragment key={name}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ width: 7, height: 2.5, background: colorFor(i), display: 'inline-block', borderRadius: 1 }} />
-                    <span style={{ color: 'var(--text)' }}>{name}</span>
-                  </span>
-                  <span style={{ textAlign: 'right', color: ex?.latest >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtPct2(ex?.latest)}</span>
-                  <span style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{fmtPct2(ex?.sevenDaysAgo)}</span>
-                  <span style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{fmtPct2(ex?.thirtyDaysAgo)}</span>
-                </React.Fragment>
-              );
-            })}
-          </div>
+      <div style={{ marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '3px 12px', fontSize: 10 }}>
+          <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Asset</span>
+          <span style={{ color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>Today</span>
+          <span style={{ color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>7d ago</span>
+          <span style={{ color: 'var(--text-muted)', fontWeight: 600, textAlign: 'right' }}>30d ago</span>
+          {FUND_ASSETS.map((name, i) => {
+            const today = lookback(name, 0);
+            const d7 = lookback(name, 7);
+            const d30 = lookback(name, 30);
+            return (
+              <React.Fragment key={name}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 7, height: 2.5, background: colorFor(i), display: 'inline-block', borderRadius: 1 }} />
+                  <span style={{ color: 'var(--text)' }}>{name}</span>
+                </span>
+                <span style={{ textAlign: 'right', color: (today ?? 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtPct2(today)}</span>
+                <span style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{fmtPct2(d7)}</span>
+                <span style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{fmtPct2(d30)}</span>
+              </React.Fragment>
+            );
+          })}
         </div>
-      )}
-
-      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.4 }}>
-        Each line is one exchange's funding rate, smoothed over the prior 7 days. Source: The Block. dYdX V3 excluded.
       </div>
+
+      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.4 }}>{FUND_COVERAGE}</div>
     </div>
   );
 }
 
-function BlockVolCard({ tb, loading }: { tb: any; loading: boolean }) {
-  const [asset, setAsset] = useState<BlockAsset>('BTC');
-  const iv = asset === 'BTC' ? tb?.options?.ivBtc : tb?.options?.ivEth;
-  const atm7 = iv?.series?.['ATM 7'];
-  const atm30 = iv?.series?.['ATM 30'];
-  const rv = tb?.options?.realizedVolBtc?.series?.['Annualized Volatility'];
-  const optOi = asset === 'BTC' ? tb?.options?.oiBtc : tb?.options?.oiEth;
-
-  const rows: { label: string; value: string; chg?: number }[] = [
-    { label: '1W ATM Implied Vol', value: atm7?.latest != null ? atm7.latest.toFixed(1) : '...', chg: pctChange(atm7?.latest, atm7?.sevenDaysAgo) },
-    { label: '1M ATM Implied Vol', value: atm30?.latest != null ? atm30.latest.toFixed(1) : '...', chg: pctChange(atm30?.latest, atm30?.sevenDaysAgo) },
-  ];
-  if (asset === 'BTC') {
-    rows.push({ label: '30D Realized Vol', value: rv?.latest != null ? rv.latest.toFixed(1) : '...', chg: pctChange(rv?.latest, rv?.sevenDaysAgo) });
-  }
-  rows.push({ label: 'Options Open Interest', value: optOi?.latest != null ? fmtUSD(optOi.latest) : '...', chg: pctChange(optOi?.latest, optOi?.sevenDaysAgo) });
-
-  const { values, labels } = blockSeries(atm30?.history);
-
-  return (
-    <div className="card" style={{ padding: '14px 16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-        <div style={CARD_TITLE_STYLE}>Volatility & Options</div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>The Block</div>
-      </div>
-      <div style={{ marginBottom: 8 }}>
-        <MiniTabs options={BLOCK_ASSETS} active={asset} onChange={v => setAsset(v as BlockAsset)} />
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-        {rows.map(r => (
-          <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{r.label}</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>{loading ? '...' : r.value}</span>
-              {!loading && <Badge value={r.chg} />}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginBottom: 3 }}>1M ATM implied vol, last 90 days. Options OI is sum of all venues (computed aggregate).</div>
-      <Sparkline data={values} color="#7c3aed" height={48} labels={labels} formatValue={v => v.toFixed(1)} />
-    </div>
-  );
-}
-
-function BlockETFCard({ tb, etfFarside, loading }: { tb: any; etfFarside: any; loading: boolean }) {
+function SpotEtfCard({ etfFarside, loading }: { etfFarside: any; loading: boolean }) {
   const ETF_TABS = ['BTC', 'ETH', 'SOL', 'HYPE'] as const;
   const [asset, setAsset] = useState<string>('BTC');
 
-  const solFlowVal = typeof etfFarside?.sol?.latest?.total === 'number' ? etfFarside.sol.latest.total * 1e6 : null;
-  const solFlows = etfFarside?.sol ? {
-    latestFlow: solFlowVal,
-    latestFlowTs: null,
-    byProduct: etfFarside.sol.latest?.flows || {},
-    history: (etfFarside.sol.last30Days || []).map((d: any) => ({ Timestamp: new Date(d.date).getTime() / 1000, Result: (d.total || 0) * 1e6 })),
-  } : null;
-
-  const flows = asset === 'BTC' ? tb?.etf?.flowsBtc : asset === 'ETH' ? tb?.etf?.flowsEth : asset === 'SOL' ? solFlows : tb?.etf?.flowsHype;
-  const aum = asset === 'BTC' ? tb?.etf?.aumBtc : asset === 'ETH' ? tb?.etf?.aumEth : null;
-  const flow: number | null = flows?.latestFlow ?? null;
-  const flowColor = flow == null ? 'var(--text)' : flow >= 0 ? 'var(--green)' : 'var(--red)';
-  const movers: [string, number][] = Object.entries(flows?.byProduct || {})
+  // All four assets now read from Farside (decision: swap ETF flows fully
+  // to Farside, drop The Block). Shape mirrors what the SOL branch already
+  // produced — Farside's scraped data has `latest.total` and `last30Days`.
+  const key = asset.toLowerCase() as 'btc' | 'eth' | 'sol' | 'hype';
+  const assetData = etfFarside?.[key];
+  const flowVal = typeof assetData?.latest?.total === 'number' ? assetData.latest.total * 1e6 : null;
+  const flowColor = flowVal == null ? 'var(--text)' : flowVal >= 0 ? 'var(--green)' : 'var(--red)';
+  const movers: [string, number][] = Object.entries(assetData?.latest?.flows || {})
     .filter((e): e is [string, number] => typeof e[1] === 'number' && e[1] !== 0)
     .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
     .slice(0, 3);
+  const lastTradingDay = assetData?.lastTradingDay;
 
-  const { values, labels } = blockSeries(flows?.history);
+  const history = (assetData?.last30Days || []).map((d: any) => ({
+    t: Math.floor(new Date(d.date).getTime() / 1000),
+    v: (d.total || 0) * 1e6,
+  }));
+  const values = history.map((p: any) => p.v);
+  const labels = history.map((p: any) => fmtDate(p.t));
 
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
         <div style={CARD_TITLE_STYLE}>Spot ETF Flows</div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{asset === 'SOL' ? 'Farside Investors' : 'The Block'}</div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Farside Investors</div>
       </div>
       <div style={{ marginBottom: 8 }}>
         <MiniTabs options={ETF_TABS} active={asset} onChange={setAsset} />
       </div>
       <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: flowColor, lineHeight: 1.1, marginBottom: 2 }}>
-        {loading || flow == null ? '...' : (flow >= 0 ? '+' : '') + fmtUSD(flow).replace('$-', '-$')}
+        {loading || flowVal == null ? '...' : (flowVal >= 0 ? '+' : '') + fmtUSD(flowVal).replace('$-', '-$')}
       </div>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
-        {flows?.latestFlowTs ? `Net flow across all funds, ${fmtDate(flows.latestFlowTs)} (computed aggregate)` : 'Net flow across all funds (computed aggregate)'}
+        {lastTradingDay ? `Net flow across all funds, latest trading day (${lastTradingDay})` : 'Net flow across all funds'}
       </div>
       {movers.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 8 }}>
@@ -587,49 +512,60 @@ function BlockETFCard({ tb, etfFarside, loading }: { tb: any; etfFarside: any; l
           ))}
         </div>
       )}
-      {aum?.latest != null && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 6, marginBottom: 8 }}>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM, sum of all funds (computed aggregate)</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>{fmtUSD(aum.latest)}</span>
-            <Badge value={pctChange(aum.latest, aum.sevenDaysAgo)} />
-          </div>
-        </div>
-      )}
       <Sparkline data={values} color="#0891b2" height={44} labels={labels} formatValue={v => (v >= 0 ? '+' : '') + fmtUSD(v).replace('$-', '-$')} />
+      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 6 }}>
+        Farside updates after US market close; the latest trading day may lag by one calendar day.
+      </div>
     </div>
   );
 }
 
-function BlockMacroCard({ tb, loading }: { tb: any; loading: boolean }) {
-  const sc = tb?.stablecoins;
-  const holdings = tb?.strategy?.series?.['MicroStrategy Bitcoin Holdings'];
-  const avgPrice = tb?.strategy?.series?.['Average BTC Purchase Price'];
-  const { values, labels } = blockSeries(sc?.history);
+// Replaces BlockMacroCard. Stablecoins + RWA from DefiLlama, Strategy
+// holdings from CoinGecko treasury, ETF AUM from SoSoValue (true market
+// value, not a cumulative-flow figure).
+function MacroCard({ macro, loading }: { macro: any; loading: boolean }) {
+  const sc = macro?.stablecoins;
+  const rwa = macro?.rwa;
+  const strategy = macro?.strategy;
+  const aumBtc = macro?.etfAum?.btc;
+
+  const values = (sc?.history || []).map((p: any) => p.v);
+  const labels = (sc?.history || []).map((p: any) => fmtDate(p.t));
 
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
         <div style={CARD_TITLE_STYLE}>Stablecoins & Strategy</div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>The Block</div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>DefiLlama / CoinGecko</div>
       </div>
       <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1.1, marginBottom: 2 }}>
         {loading || sc?.latest == null ? '...' : fmtUSD(sc.latest)}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
         <Badge value={pctChange(sc?.latest, sc?.sevenDaysAgo)} />
-        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total supply, sum of all stablecoins (computed aggregate)</span>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total supply, sum of all stablecoins (computed aggregate). Source: DefiLlama.</span>
       </div>
       <Sparkline data={values} color="#16a34a" height={44} labels={labels} formatValue={fmtUSD} />
       <div style={{ borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total Tokenised RWA (TVL)</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{rwa?.latest != null ? fmtUSD(rwa.latest) : '...'}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Strategy BTC Holdings</span>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{holdings?.latest != null ? holdings.latest.toLocaleString('en-US') + ' BTC' : '...'}</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{strategy?.holdings != null ? strategy.holdings.toLocaleString('en-US') + ' BTC' : '...'}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Avg Purchase Price</span>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{avgPrice?.latest != null ? '$' + avgPrice.latest.toLocaleString('en-US') : '...'}</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{strategy?.avgPrice != null ? '$' + Math.round(strategy.avgPrice).toLocaleString('en-US') : '...'}</span>
         </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM (BTC)</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{aumBtc?.latest != null ? fmtUSD(aumBtc.latest) : 'Data Not Published'}</span>
+        </div>
+      </div>
+      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 8 }}>
+        RWA TVL: sum across DefiLlama&apos;s RWA category, computed aggregate. Strategy holdings: CoinGecko treasury data. ETF AUM: SoSoValue, true net assets.
       </div>
     </div>
   );
@@ -642,7 +578,6 @@ function HeadlinesCard({ news }: { news: any[] }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <Newspaper size={14} style={{ color: 'var(--accent)' }} />
         <span style={CARD_TITLE_STYLE}>Latest Headlines</span>
-        <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto' }}>The Block, last 24h</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px' }}>
         {news.slice(0, 10).map((a: any) => (
@@ -804,7 +739,7 @@ export default function Dashboard() {
   const c = data?.coinalyze;
   const d = data?.deribit;
   const fg = data?.feargreed;
-  const tb = data?.theblock;
+  const macro = data?.macro;
   const pricesData = data?.prices;
   const prices = pricesData?.prices;
   const spotVolumeCharts = buildSpotVolumeCharts(data?.spotvolume);
@@ -855,22 +790,22 @@ export default function Dashboard() {
 
         <HealthCheckPanel />
         {data && <RegimeBar data={data} />}
-        <HeadlinesCard news={tb?.news || []} />
 
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
           <SpotPriceCard prices={prices} />
           <GlobalMetricsCard pricesData={pricesData} />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 12 }}>
-          <BlockOICard tb={tb} loading={loading} />
-          <BlockFundingCard tb={tb} loading={loading} />
-          <BlockVolCard tb={tb} loading={loading} />
+        {/* The Volatility & Options card (The Block) has been removed.
+            OptionsCard below now also carries Deribit-only options OI. */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 12 }}>
+          <OpenInterestCard c={c} loading={loading} />
+          <FundingCard c={c} loading={loading} />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-          <BlockETFCard tb={tb} etfFarside={data?.etf} loading={loading} />
-          <BlockMacroCard tb={tb} loading={loading} />
+          <SpotEtfCard etfFarside={data?.etf} loading={loading} />
+          <MacroCard macro={macro} loading={loading} />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
@@ -898,7 +833,7 @@ export default function Dashboard() {
         </div>
 
         <div style={{ textAlign: 'center', padding: '12px 0 4px', fontSize: 11, color: 'var(--text-muted)' }}>
-          Derivatives, Options, ETF & Stablecoins: The Block · Liquidations: Coinalyze · Prices & Global: CoinGecko · Skew & Basis: Deribit · Sentiment: Alternative.me
+          Derivatives & Funding: Coinalyze · ETF Flows: Farside Investors · ETF AUM: SoSoValue · Stablecoins & RWA: DefiLlama · Strategy: CoinGecko · Spot & Global: CoinGecko · Skew, Basis & Options OI: Deribit · Sentiment: Alternative.me
         </div>
 
         {showDailyNote && (
