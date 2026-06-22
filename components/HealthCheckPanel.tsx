@@ -58,7 +58,7 @@ const LEGEND: { card: string; source: string; composition: string }[] = [
   {
     card: 'ETF AUM',
     source: 'SoSoValue',
-    composition: 'True market-value net assets for BTC and ETH spot ETFs from SoSoValue. SOL and HYPE AUM not published by any free source.',
+    composition: 'True market-value net assets for BTC, ETH, SOL and XRP spot ETFs from SoSoValue. HYPE AUM not published by any free source.',
   },
   {
     card: 'Strategy',
