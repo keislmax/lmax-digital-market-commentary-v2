@@ -136,6 +136,7 @@ export async function POST(req: Request) {
       { asset: 'ETH', flow: farsideFlow('eth'), aum: macro?.etfAum?.eth?.latest ?? null, aum30d: macro?.etfAum?.eth?.thirtyDaysAgo ?? null },
       { asset: 'SOL', flow: farsideFlow('sol'), aum: macro?.etfAum?.sol?.latest ?? null, aum30d: macro?.etfAum?.sol?.thirtyDaysAgo ?? null },
       { asset: 'XRP', flow: farsideFlow('xrp'), aum: macro?.etfAum?.xrp?.latest ?? null, aum30d: macro?.etfAum?.xrp?.thirtyDaysAgo ?? null },
+      { asset: 'HYPE', flow: farsideFlow('hype'), aum: null, aum30d: null },
     ];
     // Strategy holdings now from CoinGecko treasury data (via macro).
     const strategyHoldings = macro?.strategy?.holdings ?? null;
