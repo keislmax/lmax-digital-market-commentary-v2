@@ -593,6 +593,7 @@ function MacroCard({ macro, loading }: { macro: any; loading: boolean }) {
   const aumBtc = macro?.etfAum?.btc;
   const aumEth = macro?.etfAum?.eth;
   const aumSol = macro?.etfAum?.sol;
+  const aumXrp = macro?.etfAum?.xrp;
 
   const values = (sc?.history || []).map((p: any) => p.v);
   const labels = (sc?.history || []).map((p: any) => fmtDate(p.t));
@@ -635,6 +636,10 @@ function MacroCard({ macro, loading }: { macro: any; loading: boolean }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM (SOL)</span>
           <span style={{ fontSize: 13, fontWeight: 600 }}>{aumSol?.latest != null ? fmtUSD(aumSol.latest) : 'Data Not Published'}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM (XRP)</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{aumXrp?.latest != null ? fmtUSD(aumXrp.latest) : 'Data Not Published'}</span>
         </div>
       </div>
       <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 8 }}>
