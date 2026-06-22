@@ -141,56 +141,47 @@ export async function getOptionsOi(): Promise<{ btcUsd: number | null; ethUsd: n
 }
 
 // ---------- ETF AUM (true net assets): SoSoValue ----------
-// Base + auth confirmed: https://openapi.sosovalue.com/api/v1, header
-// x-soso-api-key. The exact "current ETF data metrics" path/body is NOT yet
-// confirmed (gitbook page exists but schema wasn't retrievable). This tries
-// the most plausible path/shape and reads several likely field names; if it
-// 404s or the shape doesn't match, it returns nulls (AUM shows "Data Not
-// Published") rather than crashing the route. Replace SOSO_ETF_ENDPOINT and
-// the readNA() field list once Kei pastes the actual sample request/response
-// from the gitbook "Get current ETF data metrics" page.
-const SOSO_BASE = 'https://openapi.sosovalue.com/api/v1';
-const SOSO_ETF_ENDPOINT = '/etf/currentEtfDataMetrics'; // <-- UNCONFIRMED, adjust on verification
-const SOSO_TYPE: Record<'BTC' | 'ETH', string> = {
-  BTC: 'us-btc-spot',
-  ETH: 'us-eth-spot',
-};
-function readNetAssets(row: any): number | null {
-  const candidates = [
-    row?.totalNetAssets,
-    row?.totalNetAssetValue,
-    row?.totalNetAsset,
-    row?.netAssets,
-    row?.totalMarketValue,
-  ];
-  for (const v of candidates) {
-    if (typeof v === 'number') return v;
-    if (v != null && !isNaN(Number(v))) return Number(v);
-  }
-  return null;
-}
-async function sosoAum(asset: 'BTC' | 'ETH'): Promise<{ latest: number | null; thirtyDaysAgo: number | null }> {
+// Confirmed against sosovalue-1.gitbook.io/sosovalue-api-doc:
+//   Base: https://openapi.sosovalue.com/openapi/v1   Header: x-soso-api-key
+//   GET /etfs/summary-history?symbol=BTC&country_code=US&limit=40
+//   -> [{ date, total_net_inflow, total_value_traded, total_net_assets, cum_net_inflow }, ...]
+//   Sorted latest-first. total_net_assets is the true market-value AUM (USD).
+const SOSO_BASE = 'https://openapi.sosovalue.com/openapi/v1';
+const SOSO_KEY_CLEAN = (SOSO_KEY || '').trim();
+async function sosoAum(symbol: 'BTC' | 'ETH'): Promise<{ latest: number | null; thirtyDaysAgo: number | null }> {
   try {
-    if (!SOSO_KEY) return { latest: null, thirtyDaysAgo: null };
-    const res = await fetch(`${SOSO_BASE}${SOSO_ETF_ENDPOINT}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-soso-api-key': SOSO_KEY },
-      body: JSON.stringify({ type: SOSO_TYPE[asset] }),
-      cache: 'no-store',
-    });
+    if (!SOSO_KEY_CLEAN) return { latest: null, thirtyDaysAgo: null };
+    const res = await fetch(
+      `${SOSO_BASE}/etfs/summary-history?symbol=${symbol}&country_code=US&limit=40`,
+      {
+        method: 'GET',
+        headers: { 'x-soso-api-key': SOSO_KEY_CLEAN, Accept: 'application/json' },
+        // Do NOT cache here: a transient failure (e.g. key not yet active right
+        // after a deploy) must not get cached as null for the revalidate window.
+        // /api/all already controls overall freshness.
+        cache: 'no-store',
+      }
+    );
     if (!res.ok) return { latest: null, thirtyDaysAgo: null };
     const json: any = await res.json();
-    // Two plausible shapes: a single current-metrics object, or a list (history).
-    const data = json?.data;
-    if (Array.isArray(data) && data.length) {
-      const latestRow = data[data.length - 1];
-      const prevRow = data.length > 30 ? data[data.length - 31] : data[0];
-      return { latest: readNetAssets(latestRow), thirtyDaysAgo: readNetAssets(prevRow) };
-    }
-    if (data && typeof data === 'object') {
-      return { latest: readNetAssets(data), thirtyDaysAgo: null };
-    }
-    return { latest: null, thirtyDaysAgo: null };
+    // SoSoValue wraps every response as { code, message, data }. For time-series,
+    // data is the array directly; for paginated, data.list. Tolerate all shapes.
+    const rows: any[] = Array.isArray(json)
+      ? json
+      : Array.isArray(json?.data)
+        ? json.data
+        : Array.isArray(json?.data?.list)
+          ? json.data.list
+          : [];
+    if (!rows.length) return { latest: null, thirtyDaysAgo: null };
+    // Reverse-chronological: index 0 is latest. ~30 days ago is ~21 trading rows back.
+    const na = (row: any): number | null => {
+      const v = row?.total_net_assets;
+      return typeof v === 'number' ? v : (v != null && !isNaN(Number(v)) ? Number(v) : null);
+    };
+    const latest = na(rows[0]);
+    const prevRow = rows.length > 21 ? rows[21] : rows[rows.length - 1];
+    return { latest, thirtyDaysAgo: na(prevRow) };
   } catch { return { latest: null, thirtyDaysAgo: null }; }
 }
 export async function getEtfAum(): Promise<{
