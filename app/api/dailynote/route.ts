@@ -127,7 +127,7 @@ export async function POST(req: Request) {
     // AUM: SoSoValue true net assets (decision: true market value, not
     // Farside's cumulative-net-flow figure). AUM only covers BTC/ETH for now
     // (SoSoValue's documented coverage); SOL/HYPE AUM shows "Data Not Published".
-    const farsideFlow = (key: 'btc' | 'eth' | 'sol' | 'hype'): number | null => {
+    const farsideFlow = (key: 'btc' | 'eth' | 'sol' | 'xrp' | 'hype'): number | null => {
       const v = etfFarside?.[key]?.latest?.total;
       return typeof v === 'number' ? v * 1e6 : null;
     };
@@ -135,7 +135,7 @@ export async function POST(req: Request) {
       { asset: 'BTC', flow: farsideFlow('btc'), aum: macro?.etfAum?.btc?.latest ?? null, aum30d: macro?.etfAum?.btc?.thirtyDaysAgo ?? null },
       { asset: 'ETH', flow: farsideFlow('eth'), aum: macro?.etfAum?.eth?.latest ?? null, aum30d: macro?.etfAum?.eth?.thirtyDaysAgo ?? null },
       { asset: 'SOL', flow: farsideFlow('sol'), aum: macro?.etfAum?.sol?.latest ?? null, aum30d: macro?.etfAum?.sol?.thirtyDaysAgo ?? null },
-      { asset: 'HYPE', flow: farsideFlow('hype'), aum: null, aum30d: null },
+      { asset: 'XRP', flow: farsideFlow('xrp'), aum: macro?.etfAum?.xrp?.latest ?? null, aum30d: macro?.etfAum?.xrp?.thirtyDaysAgo ?? null },
     ];
     // Strategy holdings now from CoinGecko treasury data (via macro).
     const strategyHoldings = macro?.strategy?.holdings ?? null;
