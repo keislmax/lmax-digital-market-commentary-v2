@@ -234,7 +234,7 @@ function buildHTML(note: DailyNoteData): string {
 
   <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:28px;width:100%">
     <tr>
-      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are annualized mean rates across major perp venues per asset, computed aggregate, sourced from Coinalyze for all five assets. All liquidation figures entered manually from Coinglass. Stablecoins and RWA TVL from DefiLlama. Strategy holdings from CoinGecko treasury data. ETF flows from Farside Investors; ETF AUM (BTC/ETH/SOL/XRP) from SoSoValue, true net assets. Options DVOL, skew and open interest from Deribit only, not a multi-venue aggregate.</i></td>
+      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are annualized mean rates across major perp venues per asset, computed aggregate, sourced from Coinalyze for all five assets. All liquidation figures entered manually from Coinglass. Stablecoins and RWA TVL from DefiLlama. Strategy holdings from CoinGecko treasury data. ETF flows from Farside Investors; ETF AUM (BTC/ETH/SOL/XRP) from SoSoValue, true net assets; HYPE AUM not published by any free source. Options DVOL, skew and open interest from Deribit only, not a multi-venue aggregate.</i></td>
     </tr>
   </table>
 </div>`;
