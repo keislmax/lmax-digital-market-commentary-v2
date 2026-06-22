@@ -44,10 +44,15 @@ async function fetchDailyCloses(coinId: string): Promise<number[]> {
 // removal, just on a different vendor. "Today" reads the latest 24h point;
 // "7 days ago" looks back from the 90d series so it has enough history
 // regardless of the dashboard's currently-selected chart timeframe.
-function coinalyzeFundingRow(chartsByAsset: any, asset: string) {
+function coinalyzeFundingRow(fundingRate: any, asset: string) {
+  const chartsByAsset = fundingRate?.chartsByAsset || {};
+  const byAsset = fundingRate?.byAsset || {};
   const series90d: { t: number; v: number }[] = chartsByAsset?.[asset]?.['90d'] || chartsByAsset?.[asset]?.['1y'] || [];
-  const series24h: { t: number; v: number }[] = chartsByAsset?.[asset]?.['24h'] || [];
-  const todayRaw = series24h.length ? series24h[series24h.length - 1].v : (series90d.length ? series90d[series90d.length - 1].v : null);
+  // "Latest" = Coinalyze's live FR AVG (current funding rate, the number shown on
+  // coinalyze.net's markets page), so it's directly verifiable against the source.
+  const todayRaw = typeof byAsset?.[asset] === 'number'
+    ? byAsset[asset]
+    : (series90d.length ? series90d[series90d.length - 1].v : null);
   const today = todayRaw != null ? todayRaw * 3 * 365 : null; // annualized: 3 settlements/day x 365, matches prior note scale
   let sevenDaysAgoRaw: number | null = null;
   if (series90d.length) {
@@ -101,7 +106,7 @@ export async function POST(req: Request) {
     // Single source for ALL five assets: Coinalyze (decision: consistency
     // over per-asset source-mixing now that The Block is fully retired).
     const fundingRows = ASSETS.map(asset => {
-      const row = coinalyzeFundingRow(c?.fundingRate?.chartsByAsset, asset);
+      const row = coinalyzeFundingRow(c?.fundingRate, asset);
       return { asset, today: row.today, sevenDaysAgo: row.sevenDaysAgo, source: 'coinalyze' };
     });
     const totalLiqs = c?.liquidations?.total24h ?? null;
@@ -129,7 +134,7 @@ export async function POST(req: Request) {
     const etfRows = [
       { asset: 'BTC', flow: farsideFlow('btc'), aum: macro?.etfAum?.btc?.latest ?? null, aum30d: macro?.etfAum?.btc?.thirtyDaysAgo ?? null },
       { asset: 'ETH', flow: farsideFlow('eth'), aum: macro?.etfAum?.eth?.latest ?? null, aum30d: macro?.etfAum?.eth?.thirtyDaysAgo ?? null },
-      { asset: 'SOL', flow: farsideFlow('sol'), aum: null, aum30d: null },
+      { asset: 'SOL', flow: farsideFlow('sol'), aum: macro?.etfAum?.sol?.latest ?? null, aum30d: macro?.etfAum?.sol?.thirtyDaysAgo ?? null },
       { asset: 'HYPE', flow: farsideFlow('hype'), aum: null, aum30d: null },
     ];
     // Strategy holdings now from CoinGecko treasury data (via macro).
