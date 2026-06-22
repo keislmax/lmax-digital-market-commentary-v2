@@ -144,11 +144,12 @@ export async function getOptionsOi(): Promise<{ btcUsd: number | null; ethUsd: n
 // Confirmed against sosovalue-1.gitbook.io/sosovalue-api-doc:
 //   Base: https://openapi.sosovalue.com/openapi/v1   Header: x-soso-api-key
 //   GET /etfs/summary-history?symbol=BTC&country_code=US&limit=40
-//   -> [{ date, total_net_inflow, total_value_traded, total_net_assets, cum_net_inflow }, ...]
+//   -> { code, message, data: [{ date, total_net_inflow, total_value_traded, total_net_assets, cum_net_inflow }, ...] }
 //   Sorted latest-first. total_net_assets is the true market-value AUM (USD).
+//   BTC, ETH and SOL confirmed working. HYPE not published by SoSoValue.
 const SOSO_BASE = 'https://openapi.sosovalue.com/openapi/v1';
 const SOSO_KEY_CLEAN = (SOSO_KEY || '').trim();
-async function sosoAum(symbol: 'BTC' | 'ETH'): Promise<{ latest: number | null; thirtyDaysAgo: number | null }> {
+async function sosoAum(symbol: 'BTC' | 'ETH' | 'SOL'): Promise<{ latest: number | null; thirtyDaysAgo: number | null }> {
   try {
     if (!SOSO_KEY_CLEAN) return { latest: null, thirtyDaysAgo: null };
     const res = await fetch(
@@ -187,7 +188,8 @@ async function sosoAum(symbol: 'BTC' | 'ETH'): Promise<{ latest: number | null; 
 export async function getEtfAum(): Promise<{
   btc: { latest: number | null; thirtyDaysAgo: number | null };
   eth: { latest: number | null; thirtyDaysAgo: number | null };
+  sol: { latest: number | null; thirtyDaysAgo: number | null };
 }> {
-  const [btc, eth] = await Promise.all([sosoAum('BTC'), sosoAum('ETH')]);
-  return { btc, eth };
+  const [btc, eth, sol] = await Promise.all([sosoAum('BTC'), sosoAum('ETH'), sosoAum('SOL')]);
+  return { btc, eth, sol };
 }
