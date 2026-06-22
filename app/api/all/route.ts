@@ -375,7 +375,12 @@ async function getMacro() {
     stablecoins: stablecoins.status === 'fulfilled' ? stablecoins.value : null,
     rwa: rwa.status === 'fulfilled' ? rwa.value : null,
     strategy: strategy.status === 'fulfilled' ? strategy.value : null,
-    etfAum: etfAum.status === 'fulfilled' ? etfAum.value : { btc: { latest: null, thirtyDaysAgo: null }, eth: { latest: null, thirtyDaysAgo: null } },
+    etfAum: etfAum.status === 'fulfilled' ? etfAum.value : {
+      btc: { latest: null, thirtyDaysAgo: null },
+      eth: { latest: null, thirtyDaysAgo: null },
+      sol: { latest: null, thirtyDaysAgo: null },
+      xrp: { latest: null, thirtyDaysAgo: null },
+    },
     updatedAt: Date.now(),
   };
 }
