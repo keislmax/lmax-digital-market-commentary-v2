@@ -19,8 +19,8 @@ type ChartAsset = typeof CHART_ASSETS[number];
 const FUND_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP', 'HYPE'] as const;
 type FundAsset = typeof FUND_ASSETS[number];
 
-const LIQ_COVERAGE = 'Sum across BTC/ETH/SOL/XRP on major perp venues (Binance, Bybit, OKX, Deribit, BitMEX, Kraken), computed aggregate. Source: Coinalyze.';
-const OI_COVERAGE = 'Sum across major perp venues (Binance, Bybit, OKX, Deribit, BitMEX, Kraken), computed aggregate. Source: Coinalyze.';
+const LIQ_COVERAGE = 'Sum across BTC/ETH/SOL/XRP on tracked perp venues (Binance, Bybit, OKX, Deribit, BitMEX, Kraken), computed aggregate. Not Coinalyze\u2019s full-market total. Source: Coinalyze.';
+const OI_COVERAGE = 'Sum across tracked perp venues (Binance, Bybit, OKX, Deribit, BitMEX, Kraken) for BTC, ETH, SOL, XRP, HYPE. Computed aggregate, not Coinalyze\u2019s full-market total (which includes additional venues and assets). Source: Coinalyze.';
 const FUND_COVERAGE = 'Annualized mean funding rate across major perp venues per asset, computed aggregate. Source: Coinalyze.';
 
 function fmtUSD(v: number) {
@@ -591,6 +591,8 @@ function MacroCard({ macro, loading }: { macro: any; loading: boolean }) {
   const rwa = macro?.rwa;
   const strategy = macro?.strategy;
   const aumBtc = macro?.etfAum?.btc;
+  const aumEth = macro?.etfAum?.eth;
+  const aumSol = macro?.etfAum?.sol;
 
   const values = (sc?.history || []).map((p: any) => p.v);
   const labels = (sc?.history || []).map((p: any) => fmtDate(p.t));
@@ -625,6 +627,14 @@ function MacroCard({ macro, loading }: { macro: any; loading: boolean }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM (BTC)</span>
           <span style={{ fontSize: 13, fontWeight: 600 }}>{aumBtc?.latest != null ? fmtUSD(aumBtc.latest) : 'Data Not Published'}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM (ETH)</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{aumEth?.latest != null ? fmtUSD(aumEth.latest) : 'Data Not Published'}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM (SOL)</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{aumSol?.latest != null ? fmtUSD(aumSol.latest) : 'Data Not Published'}</span>
         </div>
       </div>
       <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 8 }}>
