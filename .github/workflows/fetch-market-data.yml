@@ -126,7 +126,7 @@ jobs:
             ],
           };
 
-          const ALL_SYMBOLS = Object.values(ASSET_SYMBOLS).flat().join(',');
+          // sleepMs=18000 pacing comment (see fetchByAsset below)
 
           function getAsset(symbol) {
             if (symbol.startsWith('BTC') || symbol === 'BTC.H' || symbol === '1.T') return 'BTC';
@@ -143,10 +143,10 @@ jobs:
             return null;
           }
 
-          // sleepMs=15000: each asset fetch costs 12 calls. With 15s between assets,
+          // sleepMs=18000: each asset fetch costs 12 calls. With 15s between assets,
           // ~10 calls age out of the 60s rolling window before the next request,
           // keeping the running total well under the 40/min limit.
-          async function fetchByAsset(pathFn, sleepMs=15000) {
+          async function fetchByAsset(pathFn, sleepMs=18000) {
             const results = [];
             await sleep(4000);
             for (const [asset, syms] of Object.entries(ASSET_SYMBOLS)) {
@@ -237,7 +237,9 @@ jobs:
             const to = nowSec();
 
             console.log('=== Fetching current snapshots ===');
-            const oiCurrent      = await fetchCoinalyze(`/open-interest?symbols=${ALL_SYMBOLS}&convert_to_usd=true`);
+            // Fetch current OI per-asset (not combined) to stay under the 40/min
+            // rate limit — a 60-symbol combined request costs 60 calls at once.
+            const oiCurrentRaw = await fetchByAsset(s => `/open-interest?symbols=${s}&convert_to_usd=true`);
             await sleep(4000);
             const fundingCurrent = await fetchByAsset(s => `/funding-rate?symbols=${s}`);
             await sleep(4000);
@@ -268,7 +270,7 @@ jobs:
             const fundH1y = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}`);
 
             console.log('=== Aggregating ===');
-            const totalOI = (oiCurrent||[]).reduce((s,x)=>s+(x.value||0),0);
+            const totalOI = (oiCurrentRaw||[]).reduce((s,x)=>s+(x.value||0),0);
             const avgFunding = (fundingCurrent||[]).length
               ? (fundingCurrent||[]).reduce((s,f)=>s+(f.value||0),0)/(fundingCurrent||[]).length : 0;
 
