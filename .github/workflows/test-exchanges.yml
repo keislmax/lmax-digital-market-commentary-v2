@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Fetch exchange codes and BTC symbols
+      - name: Fetch all asset perpetual symbols
         env:
           COINALYZE_API_KEY: ${{ secrets.COINALYZE_API_KEY }}
         run: |
@@ -34,43 +34,23 @@ jobs:
           }
 
           async function main() {
-            // Step 1: get all exchange codes + names
-            console.log('=== /exchanges ===');
-            const exchanges = await get('/exchanges');
-            if (Array.isArray(exchanges)) {
-              exchanges.forEach(e => console.log(`  code=${JSON.stringify(e.code)} name=${JSON.stringify(e.name)}`));
-            } else {
-              console.log('exchanges response:', JSON.stringify(exchanges));
+            const markets = await get('/future-markets');
+            if (!Array.isArray(markets)) {
+              console.log('future-markets failed:', JSON.stringify(markets));
+              return;
             }
 
-            // Step 2: get all BTC perpetuals to see which exchange suffixes exist
-            // and what the full symbol looks like per exchange
-            console.log('\n=== BTC perpetuals from /future-markets ===');
-            const markets = await get('/future-markets');
-            if (Array.isArray(markets)) {
-              const btcPerps = markets.filter(m => {
+            const TARGET_ASSETS = ['BTC','ETH','SOL','XRP','HYPE'];
+            for (const asset of TARGET_ASSETS) {
+              const perps = markets.filter(m => {
                 const base = (m.base_asset || m.baseAsset || '').toUpperCase();
                 const isPerp = typeof m.is_perpetual === 'boolean'
                   ? m.is_perpetual
                   : (m.symbol||'').toUpperCase().includes('PERP') || (m.symbol||'').toUpperCase().includes('-PERPETUAL');
-                return base === 'BTC' && isPerp;
+                return base === asset && isPerp;
               });
-              btcPerps.forEach(m => console.log(`  symbol=${m.symbol}  exchange=${m.exchange || m.exchange_code || '?'}`));
-              console.log(`\nTotal BTC perps: ${btcPerps.length}`);
-
-              // Also log ETH, SOL, XRP, HYPE counts
-              for (const asset of ['ETH','SOL','XRP','HYPE']) {
-                const count = markets.filter(m => {
-                  const base = (m.base_asset || m.baseAsset || '').toUpperCase();
-                  const isPerp = typeof m.is_perpetual === 'boolean'
-                    ? m.is_perpetual
-                    : (m.symbol||'').toUpperCase().includes('PERP') || (m.symbol||'').toUpperCase().includes('-PERPETUAL');
-                  return base === asset && isPerp;
-                }).length;
-                console.log(`${asset} perps: ${count}`);
-              }
-            } else {
-              console.log('future-markets response:', JSON.stringify(markets)?.slice(0, 200));
+              console.log(`\n=== ${asset} perpetuals (${perps.length}) ===`);
+              perps.forEach(m => console.log(`  ${m.symbol.padEnd(32)} exchange=${m.exchange || '?'}`));
             }
           }
 
