@@ -1,0 +1,169 @@
+name: Test Expanded Cron
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Test expanded symbol coverage (no Redis write)
+        env:
+          COINALYZE_API_KEY: ${{ secrets.COINALYZE_API_KEY }}
+        run: |
+          node << 'EOF'
+          const https = require('https');
+          const COINALYZE_KEY = process.env.COINALYZE_API_KEY;
+
+          function request(url, opts={}) {
+            return new Promise((res) => {
+              const u = new URL(url);
+              const req = https.request({
+                hostname: u.hostname, path: u.pathname + u.search,
+                method: opts.method || 'GET',
+                headers: { 'Content-Type': 'application/json', ...(opts.headers||{}) },
+              }, r => {
+                let data = '';
+                r.on('data', c => data += c);
+                r.on('end', () => { try { res(JSON.parse(data)); } catch { res(null); } });
+              });
+              req.on('error', () => res(null));
+              req.end();
+            });
+          }
+
+          function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+          function nowSec() { return Math.floor(Date.now()/1000); }
+          function ago(s) { return nowSec() - s; }
+
+          async function fetchCoinalyze(path, retries=3) {
+            for (let i = 0; i < retries; i++) {
+              const data = await request(`https://api.coinalyze.net/v1${path}`, {
+                headers: { 'api_key': COINALYZE_KEY }
+              });
+              if (data && !data.message) return data;
+              const wait = data?.message ? 62 : 10;
+              console.log(`Retry ${i+1}: ${path.split('?')[0]} (${wait}s)`);
+              await sleep(wait * 1000);
+            }
+            return null;
+          }
+
+          const ASSET_SYMBOLS = {
+            BTC: [
+              'BTCUSDT_PERP.A','BTCUSD_PERP.A','BTCUSDC_PERP.A',
+              'BTCPERP.6','BTCUSDT.6','BTCUSD.6',
+              'BTCUSDT_PERP.3','BTCUSD_PERP.3',
+              'BTC-PERPETUAL.2','BTC.H','BTCUSD_PERP.0','BTCUSDT_PERP.4',
+            ],
+            ETH: [
+              'ETHUSDT_PERP.A','ETHUSD_PERP.A','ETHUSDC_PERP.A',
+              'ETHPERP.6','ETHUSDT.6','ETHUSD.6',
+              'ETHUSDT_PERP.3','ETHUSD_PERP.3',
+              'ETH-PERPETUAL.2','ETH.H','ETHUSD_PERP.0','ETHUSDT_PERP.4',
+            ],
+            SOL: [
+              'SOLUSDT_PERP.A','SOLUSD_PERP.A','SOLUSDC_PERP.A',
+              'SOLPERP.6','SOLUSDT.6',
+              'SOLUSDT_PERP.3','SOLUSD_PERP.3',
+              'SOLUSDT_PERP.4','SOL.H','SOL_USDT.Y','SOL-USD.8','SOL_USDC-PERPETUAL.2',
+            ],
+            XRP: [
+              'XRPUSDT_PERP.A','XRPUSD_PERP.A','XRPUSDC_PERP.A',
+              'XRPPERP.6','XRPUSDT.6','XRPUSD.6',
+              'XRPUSDT_PERP.3','XRPUSD_PERP.3',
+              'XRPUSDT_PERP.4','XRP.H','XRP_USDT.Y','XRP-USD.8',
+            ],
+            HYPE: [
+              'HYPEUSDT_PERP.A','HYPEPERP.6','HYPEUSDT.6',
+              'HYPEUSDT_PERP.3','HYPEUSDT_PERP.4','HYPE.H',
+              'HYPE_USDT.Y','HYPE-USD.8','HYPEUSDT_PERP.0',
+              'HYPE_USDC-PERPETUAL.2','pf_hypeusd.K','HYPEUSDT_PERP.F',
+            ],
+          };
+
+          const ALL_SYMBOLS = Object.values(ASSET_SYMBOLS).flat().join(',');
+          const startTime = Date.now();
+
+          async function fetchByAsset(pathFn, sleepMs=15000) {
+            const results = [];
+            await sleep(4000);
+            for (const [asset, syms] of Object.entries(ASSET_SYMBOLS)) {
+              console.log(`  Fetching ${asset}... (${syms.length} symbols)`);
+              const data = await fetchCoinalyze(pathFn(syms.join(',')));
+              if (data) results.push(...data);
+              await sleep(sleepMs);
+            }
+            return results;
+          }
+
+          function getAsset(symbol) {
+            if (symbol.startsWith('BTC') || symbol === 'BTC.H') return 'BTC';
+            if (symbol.startsWith('ETH') || symbol === 'ETH.H') return 'ETH';
+            if (symbol.startsWith('SOL') || symbol === 'SOL.H') return 'SOL';
+            if (symbol.startsWith('XRP') || symbol === 'XRP.H') return 'XRP';
+            if (symbol.startsWith('HYPE') || symbol === 'HYPE.H') return 'HYPE';
+            if (symbol.includes('BTC')) return 'BTC';
+            if (symbol.includes('ETH')) return 'ETH';
+            if (symbol.includes('SOL')) return 'SOL';
+            if (symbol.includes('XRP')) return 'XRP';
+            if (symbol.includes('HYPE')) return 'HYPE';
+            return null;
+          }
+
+          async function main() {
+            const from24h = ago(86400);
+            const to = nowSec();
+
+            console.log('=== TEST: expanded symbol coverage (60 symbols, no Redis write) ===');
+            console.log('Symbol counts:', JSON.stringify(Object.fromEntries(Object.entries(ASSET_SYMBOLS).map(([k,v])=>[k,v.length]))));
+            console.log('Total symbols:', ALL_SYMBOLS.split(',').length);
+
+            // Step 1: current OI snapshot (all symbols in one call = 60 calls against limit)
+            console.log('\n=== Step 1: Current OI snapshot ===');
+            const oiCurrent = await fetchCoinalyze(`/open-interest?symbols=${ALL_SYMBOLS}&convert_to_usd=true`);
+            const totalOI = (oiCurrent||[]).reduce((s,x)=>s+(x.value||0),0);
+            const oiByAsset = {};
+            for (const x of (oiCurrent||[])) {
+              const asset = getAsset(x.symbol||'');
+              if (asset) oiByAsset[asset] = (oiByAsset[asset]||0) + (x.value||0);
+            }
+            console.log(`totalOI: $${(totalOI/1e9).toFixed(2)}B`);
+            console.log('OI by asset:', JSON.stringify(Object.fromEntries(Object.entries(oiByAsset).map(([k,v])=>[k,'$'+(v/1e9).toFixed(2)+'B']))));
+            await sleep(4000);
+
+            // Step 2: current funding (per asset, 15s between)
+            console.log('\n=== Step 2: Current funding ===');
+            const fundingCurrent = await fetchByAsset(s => `/funding-rate?symbols=${s}`);
+            const fundingByAsset = {};
+            for (const [asset, syms] of Object.entries(ASSET_SYMBOLS)) {
+              const rates = fundingCurrent.filter(f => syms.includes(f.symbol));
+              fundingByAsset[asset] = rates.length ? rates.reduce((s,f)=>s+(f.value||0),0)/rates.length : 0;
+            }
+            console.log('Funding by asset (annualized):', JSON.stringify(
+              Object.fromEntries(Object.entries(fundingByAsset).map(([k,v])=>[k,(v*3*365).toFixed(2)+'%']))
+            ));
+            await sleep(4000);
+
+            // Step 3: 24H liquidation history (the most important gap to close)
+            console.log('\n=== Step 3: 24H liquidation history ===');
+            const liqH24 = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+            const liqByTime = {};
+            for (const sym of liqH24) {
+              for (const p of (sym.history||[])) {
+                if (!liqByTime[p.t]) liqByTime[p.t] = {l:0,s:0};
+                liqByTime[p.t].l += p.l||0;
+                liqByTime[p.t].s += p.s||0;
+              }
+            }
+            const totalLiqs = Object.values(liqByTime).reduce((s,p)=>s+p.l+p.s,0);
+            console.log(`totalLiqs24h: $${(totalLiqs/1e6).toFixed(1)}M`);
+
+            const elapsed = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
+            console.log(`\n=== TEST COMPLETE in ${elapsed} min ===`);
+            console.log('If no 62s retries above and totalOI > $25B: safe to promote to production cron.');
+          }
+
+          main().catch(e => { console.error('Fatal:', e); process.exit(1); });
+          EOF
