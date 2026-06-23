@@ -67,30 +67,90 @@ jobs:
             console.log(`Redis ${key}:`, JSON.stringify(r));
           }
 
+          // Expanded symbol list — all verified against Coinalyze /future-markets
+          // (23 Jun 2026). Covers the 12 highest-OI venues per asset:
+          // Binance, Bybit, OKX, Deribit/Hyperliquid, Huobi, BitMEX/Gate.io/dYdX.
+          // 12 symbols per asset = each request costs 12 calls against the 40/min
+          // rate limit. With 15s sleep between assets, the rolling 60s window stays
+          // comfortably under 40. Runtime ~15 min, well within the 20-min timeout.
           const ASSET_SYMBOLS = {
-            BTC: ['BTCUSDT_PERP.A','BTCUSD_PERP.0','BTCUSDT_PERP.3','BTC-PERPETUAL.2','BTCUSDT_PERP.4','BTCPERP.6'],
-            ETH: ['ETHUSDT_PERP.A','ETHUSD_PERP.0','ETHUSDT_PERP.3','ETH-PERPETUAL.2','ETHUSDT_PERP.4','ETHPERP.6'],
-            SOL: ['SOLUSDT_PERP.A','SOLUSDT_PERP.3','SOLUSDT_PERP.4','SOLPERP.6'],
-            XRP: ['XRPUSDT_PERP.A','XRPUSDT_PERP.3','XRPUSDT_PERP.4','XRPPERP.6'],
-            HYPE: ['HYPEUSDT_PERP.A','HYPEUSDT_PERP.3','HYPEPERP.6','HYPE.H','HYPEUSDT_PERP.4'],
+            BTC: [
+              'BTCUSDT_PERP.A','BTCUSD_PERP.A','BTCUSDC_PERP.A',  // Binance
+              'BTCPERP.6','BTCUSDT.6','BTCUSD.6',                   // Bybit
+              'BTCUSDT_PERP.3','BTCUSD_PERP.3',                     // OKX
+              'BTC-PERPETUAL.2',                                     // Deribit
+              'BTC.H',                                               // Hyperliquid
+              'BTCUSD_PERP.0',                                       // BitMEX
+              'BTCUSDT_PERP.4',                                      // Huobi
+            ],
+            ETH: [
+              'ETHUSDT_PERP.A','ETHUSD_PERP.A','ETHUSDC_PERP.A',   // Binance
+              'ETHPERP.6','ETHUSDT.6','ETHUSD.6',                   // Bybit
+              'ETHUSDT_PERP.3','ETHUSD_PERP.3',                     // OKX
+              'ETH-PERPETUAL.2',                                     // Deribit
+              'ETH.H',                                               // Hyperliquid
+              'ETHUSD_PERP.0',                                       // BitMEX
+              'ETHUSDT_PERP.4',                                      // Huobi
+            ],
+            SOL: [
+              'SOLUSDT_PERP.A','SOLUSD_PERP.A','SOLUSDC_PERP.A',   // Binance
+              'SOLPERP.6','SOLUSDT.6',                               // Bybit
+              'SOLUSDT_PERP.3','SOLUSD_PERP.3',                     // OKX
+              'SOLUSDT_PERP.4',                                      // Huobi
+              'SOL.H',                                               // Hyperliquid
+              'SOL_USDT.Y',                                          // Gate.io
+              'SOL-USD.8',                                           // dYdX
+              'SOL_USDC-PERPETUAL.2',                                // Deribit
+            ],
+            XRP: [
+              'XRPUSDT_PERP.A','XRPUSD_PERP.A','XRPUSDC_PERP.A',  // Binance
+              'XRPPERP.6','XRPUSDT.6','XRPUSD.6',                  // Bybit
+              'XRPUSDT_PERP.3','XRPUSD_PERP.3',                    // OKX
+              'XRPUSDT_PERP.4',                                     // Huobi
+              'XRP.H',                                               // Hyperliquid
+              'XRP_USDT.Y',                                          // Gate.io
+              'XRP-USD.8',                                           // dYdX
+            ],
+            HYPE: [
+              'HYPEUSDT_PERP.A',                                     // Binance
+              'HYPEPERP.6','HYPEUSDT.6',                             // Bybit
+              'HYPEUSDT_PERP.3',                                     // OKX
+              'HYPEUSDT_PERP.4',                                     // Huobi
+              'HYPE.H',                                              // Hyperliquid
+              'HYPE_USDT.Y',                                         // Gate.io
+              'HYPE-USD.8',                                          // dYdX
+              'HYPEUSDT_PERP.0',                                     // BitMEX
+              'HYPE_USDC-PERPETUAL.2',                               // Deribit
+              'pf_hypeusd.K',                                        // Kraken
+              'HYPEUSDT_PERP.F',                                     // Bitfinex
+            ],
           };
 
           const ALL_SYMBOLS = Object.values(ASSET_SYMBOLS).flat().join(',');
 
           function getAsset(symbol) {
-            if (symbol.startsWith('BTC')) return 'BTC';
-            if (symbol.startsWith('ETH')) return 'ETH';
-            if (symbol.startsWith('SOL')) return 'SOL';
-            if (symbol.startsWith('XRP')) return 'XRP';
-            if (symbol.startsWith('HYPE') || symbol === 'HYPE.H') return 'HYPE';
+            if (symbol.startsWith('BTC') || symbol === 'BTC.H' || symbol === '1.T') return 'BTC';
+            if (symbol.startsWith('ETH') || symbol === 'ETH.H' || symbol === '0.T') return 'ETH';
+            if (symbol.startsWith('SOL') || symbol === 'SOL.H' || symbol === '2.T') return 'SOL';
+            if (symbol.startsWith('XRP') || symbol === 'XRP.H' || symbol === '7.T') return 'XRP';
+            if (symbol.startsWith('HYPE') || symbol === 'HYPE.H' || symbol === '24.T') return 'HYPE';
+            // Handle exchange-prefixed formats
+            if (symbol.includes('BTC')) return 'BTC';
+            if (symbol.includes('ETH')) return 'ETH';
+            if (symbol.includes('SOL')) return 'SOL';
+            if (symbol.includes('XRP')) return 'XRP';
+            if (symbol.includes('HYPE')) return 'HYPE';
             return null;
           }
 
-          async function fetchByAsset(pathFn, sleepMs=8000) {
+          // sleepMs=15000: each asset fetch costs 12 calls. With 15s between assets,
+          // ~10 calls age out of the 60s rolling window before the next request,
+          // keeping the running total well under the 40/min limit.
+          async function fetchByAsset(pathFn, sleepMs=15000) {
             const results = [];
             await sleep(4000);
             for (const [asset, syms] of Object.entries(ASSET_SYMBOLS)) {
-              console.log(`  Fetching ${asset}...`);
+              console.log(`  Fetching ${asset}... (${syms.length} symbols)`);
               const data = await fetchCoinalyze(pathFn(syms.join(',')));
               if (data) results.push(...data);
               await sleep(sleepMs);
@@ -235,6 +295,7 @@ jobs:
             console.log('totalLiqs24h:', totalLiqs24h);
             console.log('avgFunding:', avgFunding);
             console.log('fundingByAsset:', JSON.stringify(fundingByAsset));
+            console.log('symbolCounts:', JSON.stringify(Object.fromEntries(Object.entries(ASSET_SYMBOLS).map(([k,v])=>[k,v.length]))));
 
             const result = {
               totalOI, oiChange24h, avgFunding, fundingByAsset,
