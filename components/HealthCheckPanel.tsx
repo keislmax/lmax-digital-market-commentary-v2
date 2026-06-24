@@ -33,7 +33,7 @@ const LEGEND: { card: string; source: string; composition: string }[] = [
   {
     card: 'Futures Open Interest',
     source: 'Coinalyze',
-    composition: 'Sum of open interest across major perp venues (Binance, Bybit, OKX, Deribit, BitMEX, Kraken), computed aggregate. Refreshed every ~2 hours via cron.',
+    composition: 'Sum of open interest across Binance, Bybit, OKX, Hyperliquid, and Deribit/Gate.io/Huobi per asset. Covers ~82% of the OI Coinalyze attributes to BTC/ETH/SOL/XRP/HYPE (~69% of Coinalyze\'s full all-coin total). Ceiling of the free API tier. Refreshed daily via cron.',
   },
   {
     card: 'Funding Rate (Annualized)',
@@ -43,7 +43,7 @@ const LEGEND: { card: string; source: string; composition: string }[] = [
   {
     card: 'Liquidations',
     source: 'Coinalyze',
-    composition: 'Sum of longs and shorts liquidated across BTC/ETH/SOL/XRP on major perp venues. Partial coverage: not all exchanges report liquidation data. Refreshed every ~2 hours via cron.',
+    composition: 'Sum of longs and shorts liquidated across BTC/ETH/SOL/XRP/HYPE on Binance, Bybit, OKX, Hyperliquid, and Gate.io/Huobi per asset. Covers ~82% of liquidations Coinalyze attributes to these assets (~69% of all-coin total). Ceiling of the free API tier. Refreshed daily via cron.',
   },
   {
     card: 'Options · Volatility & Skew',
