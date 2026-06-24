@@ -8,7 +8,7 @@ on:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
     steps:
       - name: Fetch and cache market data
         env:
@@ -67,53 +67,74 @@ jobs:
             console.log(`Redis ${key}:`, JSON.stringify(r));
           }
 
-          // 8 symbols per asset = 40 calls/metric — the proven maximum for Coinalyze's
-          // free tier 40/min rate limit. All symbols verified against /future-markets
-          // 23 Jun 2026. Covers: Binance (USDT+USD), Bybit (USDT+inverse), OKX
-          // (USDT+USD), Hyperliquid, and Deribit per asset. With 10s sleep between
-          // assets the rolling 60s window peaks at ~9 calls — well under 40, zero
-          // retries expected. Runtime ~13 min. Timeout set to 35 min for headroom.
+          // Full symbol coverage for all 5 assets — every perpetual market Coinalyze
+          // tracks, verified against /future-markets 23 Jun 2026.
+          // Fetched in chunks of ≤20 (the API per-request symbol cap) with
+          // budget-aware pacing: after each chunk of N symbols, sleep N×1.5s so
+          // those N calls age out of the 40/min rolling window before the next chunk.
+          // This guarantees zero rate-limit retries. Runtime ~46 min, timeout 60 min.
           const ASSET_SYMBOLS = {
             BTC: [
-              'BTCUSDT_PERP.A','BTCUSD_PERP.A',   // Binance
-              'BTCPERP.6','BTCUSDT.6',             // Bybit
-              'BTCUSDT_PERP.3','BTCUSD_PERP.3',   // OKX
-              'BTC.H',                              // Hyperliquid
-              'BTC-PERPETUAL.2',                    // Deribit
+              'BTCUSDT_PERP.A','BTCUSD_PERP.A','BTCUSDC_PERP.A',
+              'BTCUSD1_PERP.A','pf_xbtusd.K','BTCUSD_PERP.3',
+              'BTCUSDT_PERP.4','BTCUSDT_PERP.F','BTCUSDT_PERP.3',
+              'BTC.H','BTC-USD.8','BTCEUR_PERP.0',
+              'BTC-PERPETUAL.2','BTC-PERP.V','BTCUSD_PERP.0',
+              'PERP_BTC_USDT.W','BTCUSD_PERP.4','BTC_USDT.Y',
+              'BTC-PERP.C','BTCUSDT_PERP.0','BTC_USDC-PERPETUAL.2',
+              'BTCUSD.7','BTCPERP.6','BTCUSDT.6',
+              'BTCUSD.6','BTC_USD.Y','BTCUSDT.S',
+              'BTCUSD_PERP.A','BTCUSD_PERP.0',
             ],
             ETH: [
-              'ETHUSDT_PERP.A','ETHUSD_PERP.A',   // Binance
-              'ETHPERP.6','ETHUSDT.6',             // Bybit
-              'ETHUSDT_PERP.3','ETHUSD_PERP.3',   // OKX
-              'ETH.H',                              // Hyperliquid
-              'ETH-PERPETUAL.2',                    // Deribit
+              'ETHUSDT_PERP.A','ETHUSD_PERP.A','ETHUSDC_PERP.A',
+              'pf_ethusd.K','ETHUSD_PERP.3','ETHUSDT_PERP.4',
+              'ETHUSDT_PERP.F','ETHUSDT_PERP.3','ETH.H',
+              'ETH-USD.8','ETH-PERPETUAL.2','ETH-PERP.V',
+              'ETHUSD_PERP.0','PERP_ETH_USDT.W','ETHUSD_PERP.4',
+              'ETH_USDT.Y','ETH-PERP.C','ETHUSDT_PERP.0',
+              'ETH_USDC-PERPETUAL.2','ETHPERP.6','ETHUSDT.6',
+              'ETHUSD.6','ETHUSDT.S','ETHUSD_PERP.A',
+              'ETHUSDT_PERP.0','ETHUSD_PERP.0','ETHUSDT.S',
             ],
             SOL: [
-              'SOLUSDT_PERP.A','SOLUSD_PERP.A',   // Binance
-              'SOLPERP.6','SOLUSDT.6',             // Bybit
-              'SOLUSDT_PERP.3',                    // OKX
-              'SOL.H',                              // Hyperliquid
-              'SOL_USDT.Y',                         // Gate.io
-              'SOLUSDT_PERP.4',                     // Huobi
+              'SOLUSDT_PERP.A','SOLUSD_PERP.A','SOLUSDC_PERP.A',
+              'pf_solusd.K','SOLUSDT_PERP.3','SOLUSD_PERP.3',
+              'SOLUSDT_PERP.4','SOL.H','SOL-USD.8',
+              'SOL_USDC-PERPETUAL.2','SOLUSD_PERP.0','SOLUSDT_PERP.0',
+              'PERP_SOL_USDT.W','SOL_USDT.Y','SOL-PERP.C',
+              'SOLUSDT_PERP.F','SOLPERP.6','SOLUSDT.6',
+              'SOLUSD.6','SOL_USD.Y',
             ],
             XRP: [
-              'XRPUSDT_PERP.A','XRPUSD_PERP.A',   // Binance
-              'XRPPERP.6','XRPUSDT.6',             // Bybit
-              'XRPUSDT_PERP.3',                    // OKX
-              'XRP.H',                              // Hyperliquid
-              'XRP_USDT.Y',                         // Gate.io
-              'XRPUSDT_PERP.4',                     // Huobi
+              'XRPUSDT_PERP.A','XRPUSD_PERP.A','XRPUSDC_PERP.A',
+              'pf_xrpusd.K','XRPUSDT_PERP.3','XRPUSD_PERP.3',
+              'XRPUSDT_PERP.4','XRP.H','XRP-USD.8',
+              'XRP_USDC-PERPETUAL.2','XRPUSD_PERP.0','XRPUSDT_PERP.0',
+              'PERP_XRP_USDT.W','XRP_USDT.Y','XRP-PERP.C',
+              'XRPUSDT_PERP.F','XRPPERP.6','XRPUSDT.6',
+              'XRPUSD.6','XRP_USD.Y','XRPUSD_PERP.4',
+              'XRPUSD_PERP.A','XRPUSDT.S','XRP_USDT.Y',
             ],
             HYPE: [
-              'HYPEUSDT_PERP.A',                   // Binance
-              'HYPEPERP.6','HYPEUSDT.6',           // Bybit
-              'HYPEUSDT_PERP.3',                   // OKX
-              'HYPE.H',                             // Hyperliquid
-              'HYPE_USDT.Y',                        // Gate.io
-              'HYPEUSDT_PERP.4',                    // Huobi
-              'HYPE-USD.8',                         // dYdX
+              'HYPEUSDT_PERP.A','HYPEPERP.6','HYPEUSDT.6',
+              'HYPEUSDT_PERP.3','HYPEUSDT_PERP.4','HYPE.H',
+              'HYPE_USDT.Y','HYPE-USD.8','HYPEUSDT_PERP.0',
+              'HYPE_USDC-PERPETUAL.2','pf_hypeusd.K','HYPEUSDT_PERP.F',
+              'PERP_HYPE_USDT.W','HYPE-PERP.C',
             ],
           };
+
+          // Remove any accidental duplicates
+          for (const [a,syms] of Object.entries(ASSET_SYMBOLS)) {
+            ASSET_SYMBOLS[a] = [...new Set(syms)];
+          }
+
+          function chunk(arr, n) {
+            const out = [];
+            for (let i=0; i<arr.length; i+=n) out.push(arr.slice(i,i+n));
+            return out;
+          }
 
           function getAsset(symbol) {
             if (symbol.startsWith('BTC') || symbol === 'BTC.H') return 'BTC';
@@ -129,14 +150,24 @@ jobs:
             return null;
           }
 
-          async function fetchByAsset(pathFn, sleepMs=10000) {
+          // Budget-aware chunked fetcher.
+          // Splits each asset's symbols into ≤20-symbol chunks, fetches each chunk,
+          // then sleeps chunkSize × 1500ms so those calls age out of the 40/min
+          // rolling window before the next chunk fires. Guarantees zero retries.
+          async function fetchAllAssets(pathFn) {
             const results = [];
-            await sleep(4000);
             for (const [asset, syms] of Object.entries(ASSET_SYMBOLS)) {
-              console.log(`  Fetching ${asset}...`);
-              const data = await fetchCoinalyze(pathFn(syms.join(',')));
-              if (data) results.push(...data);
-              await sleep(sleepMs);
+              const chunks = chunk(syms, 20);
+              for (let ci=0; ci<chunks.length; ci++) {
+                const c = chunks[ci];
+                console.log(`  ${asset} chunk ${ci+1}/${chunks.length} (${c.length} symbols)`);
+                const data = await fetchCoinalyze(pathFn(c.join(',')));
+                if (data) results.push(...data);
+                // Sleep chunkSize × 1.5s: each symbol consumed 1 rate-limit call,
+                // and calls age out of the 60s window at 40/min = 1 per 1.5s.
+                // Sleeping this long guarantees the window is clear for the next chunk.
+                await sleep(c.length * 1500);
+              }
             }
             return results;
           }
@@ -219,36 +250,36 @@ jobs:
             const from1y  = ago(365*86400);
             const to = nowSec();
 
+            for (const [a,s] of Object.entries(ASSET_SYMBOLS)) console.log(`${a}: ${s.length} symbols`);
+
             console.log('=== Fetching current snapshots ===');
-            const oiCurrentRaw   = await fetchByAsset(s => `/open-interest?symbols=${s}&convert_to_usd=true`);
-            await sleep(4000);
-            const fundingCurrent = await fetchByAsset(s => `/funding-rate?symbols=${s}`);
-            await sleep(4000);
+            const oiCurrentRaw   = await fetchAllAssets(s => `/open-interest?symbols=${s}&convert_to_usd=true`);
+            const fundingCurrent = await fetchAllAssets(s => `/funding-rate?symbols=${s}`);
 
-            console.log('=== Fetching 24H data (per asset) ===');
-            const oiH24   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
-            const liqH24  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
-            const fundH24 = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}`);
+            console.log('=== Fetching 24H data ===');
+            const oiH24   = await fetchAllAssets(s => `/open-interest-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+            const liqH24  = await fetchAllAssets(s => `/liquidation-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+            const fundH24 = await fetchAllAssets(s => `/funding-rate-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}`);
 
-            console.log('=== Fetching 7D data (per asset) ===');
-            const oiH7d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
-            const liqH7d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
-            const fundH7d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}`);
+            console.log('=== Fetching 7D data ===');
+            const oiH7d   = await fetchAllAssets(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
+            const liqH7d  = await fetchAllAssets(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
+            const fundH7d = await fetchAllAssets(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}`);
 
-            console.log('=== Fetching 30D data (per asset) ===');
-            const oiH30d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
-            const liqH30d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
-            const fundH30d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}`);
+            console.log('=== Fetching 30D data ===');
+            const oiH30d   = await fetchAllAssets(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
+            const liqH30d  = await fetchAllAssets(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
+            const fundH30d = await fetchAllAssets(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}`);
 
-            console.log('=== Fetching 90D data (per asset) ===');
-            const oiH90d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
-            const liqH90d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
-            const fundH90d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}`);
+            console.log('=== Fetching 90D data ===');
+            const oiH90d   = await fetchAllAssets(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
+            const liqH90d  = await fetchAllAssets(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
+            const fundH90d = await fetchAllAssets(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}`);
 
-            console.log('=== Fetching 1Y data (per asset) ===');
-            const oiH1y   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
-            const liqH1y  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
-            const fundH1y = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}`);
+            console.log('=== Fetching 1Y data ===');
+            const oiH1y   = await fetchAllAssets(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
+            const liqH1y  = await fetchAllAssets(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
+            const fundH1y = await fetchAllAssets(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}`);
 
             console.log('=== Aggregating ===');
             const totalOI = (oiCurrentRaw||[]).reduce((s,x)=>s+(x.value||0),0);
