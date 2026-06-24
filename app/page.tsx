@@ -19,8 +19,8 @@ type ChartAsset = typeof CHART_ASSETS[number];
 const FUND_ASSETS = ['BTC', 'ETH', 'SOL', 'XRP', 'HYPE'] as const;
 type FundAsset = typeof FUND_ASSETS[number];
 
-const LIQ_COVERAGE = 'Sum across BTC/ETH/SOL/XRP on tracked perp venues (Binance, Bybit, OKX, Deribit, BitMEX, Kraken), computed aggregate. Not Coinalyze\u2019s full-market total. Source: Coinalyze.';
-const OI_COVERAGE = 'Sum across tracked perp venues (Binance, Bybit, OKX, Deribit, BitMEX, Kraken) for BTC, ETH, SOL, XRP, HYPE. Computed aggregate, not Coinalyze\u2019s full-market total (which includes additional venues and assets). Source: Coinalyze.';
+const LIQ_COVERAGE = 'Binance, Bybit, OKX, Hyperliquid, Gate.io/Huobi per asset. ~82% of liquidations Coinalyze attributes to BTC/ETH/SOL/XRP/HYPE (~69% of all-coin total). Ceiling of Coinalyze free tier. Source: Coinalyze.';
+const OI_COVERAGE = 'Binance, Bybit, OKX, Hyperliquid, Deribit/Gate.io/Huobi per asset. ~$29B = ~82% of the OI Coinalyze attributes to BTC/ETH/SOL/XRP/HYPE (~69% of all-coin total). Ceiling of Coinalyze free tier. Source: Coinalyze.';
 const FUND_COVERAGE = 'Annualized mean funding rate across major perp venues per asset, computed aggregate. Source: Coinalyze.';
 
 function fmtUSD(v: number) {
