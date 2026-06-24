@@ -67,50 +67,69 @@ jobs:
             console.log(`Redis ${key}:`, JSON.stringify(r));
           }
 
-          // 8 symbols per asset = 40 calls/metric, at or under the 40/min rate limit.
+          // 12 symbols per asset = 60 calls/metric. With 10s sleep between assets,
+          // the rolling 60s window peaks at ~33 calls — under the 40/min limit,
+          // eliminating retries. All symbols verified against /future-markets 23 Jun 2026.
           // Covers: Binance (USDT+USD), Bybit (USDT+inverse), OKX (USDT+USD),
-          // Hyperliquid, and the highest-OI remaining venue per asset.
-          // All symbols verified against Coinalyze /future-markets 23 Jun 2026.
-          // With 8s sleep between assets: 5*8s = 40s/metric, 15 metrics ~= 10 min.
+          // Hyperliquid, Deribit, and top 2 remaining venues per asset.
+          // Runtime: ~14 min with zero retries. Timeout set to 35 min for headroom.
           const ASSET_SYMBOLS = {
             BTC: [
               'BTCUSDT_PERP.A','BTCUSD_PERP.A',   // Binance
               'BTCPERP.6','BTCUSDT.6',             // Bybit
               'BTCUSDT_PERP.3','BTCUSD_PERP.3',   // OKX
-              'BTC.H',                              // Hyperliquid
               'BTC-PERPETUAL.2',                    // Deribit
+              'BTC.H',                              // Hyperliquid
+              'BTCUSD_PERP.0',                      // BitMEX
+              'BTCUSDT_PERP.4',                     // Huobi
+              'BTC_USDT.Y',                         // Gate.io
+              'PERP_BTC_USDT.W',                    // WOO X
             ],
             ETH: [
               'ETHUSDT_PERP.A','ETHUSD_PERP.A',   // Binance
               'ETHPERP.6','ETHUSDT.6',             // Bybit
               'ETHUSDT_PERP.3','ETHUSD_PERP.3',   // OKX
-              'ETH.H',                              // Hyperliquid
               'ETH-PERPETUAL.2',                    // Deribit
+              'ETH.H',                              // Hyperliquid
+              'ETHUSD_PERP.0',                      // BitMEX
+              'ETHUSDT_PERP.4',                     // Huobi
+              'ETH_USDT.Y',                         // Gate.io
+              'PERP_ETH_USDT.W',                    // WOO X
             ],
             SOL: [
               'SOLUSDT_PERP.A','SOLUSD_PERP.A',   // Binance
               'SOLPERP.6','SOLUSDT.6',             // Bybit
-              'SOLUSDT_PERP.3',                    // OKX
+              'SOLUSDT_PERP.3','SOLUSD_PERP.3',   // OKX
+              'SOL_USDC-PERPETUAL.2',               // Deribit
               'SOL.H',                              // Hyperliquid
-              'SOL_USDT.Y',                         // Gate.io
               'SOLUSDT_PERP.4',                     // Huobi
+              'SOL_USDT.Y',                         // Gate.io
+              'SOL-USD.8',                          // dYdX
+              'PERP_SOL_USDT.W',                    // WOO X
             ],
             XRP: [
               'XRPUSDT_PERP.A','XRPUSD_PERP.A',   // Binance
               'XRPPERP.6','XRPUSDT.6',             // Bybit
-              'XRPUSDT_PERP.3',                    // OKX
+              'XRPUSDT_PERP.3','XRPUSD_PERP.3',   // OKX
+              'XRP_USDC-PERPETUAL.2',               // Deribit
               'XRP.H',                              // Hyperliquid
-              'XRP_USDT.Y',                         // Gate.io
               'XRPUSDT_PERP.4',                     // Huobi
+              'XRP_USDT.Y',                         // Gate.io
+              'XRP-USD.8',                          // dYdX
+              'PERP_XRP_USDT.W',                    // WOO X
             ],
             HYPE: [
               'HYPEUSDT_PERP.A',                   // Binance
               'HYPEPERP.6','HYPEUSDT.6',           // Bybit
               'HYPEUSDT_PERP.3',                   // OKX
+              'HYPE_USDC-PERPETUAL.2',              // Deribit
               'HYPE.H',                             // Hyperliquid
-              'HYPE_USDT.Y',                        // Gate.io
               'HYPEUSDT_PERP.4',                    // Huobi
+              'HYPE_USDT.Y',                        // Gate.io
               'HYPE-USD.8',                         // dYdX
+              'HYPEUSDT_PERP.0',                    // BitMEX
+              'pf_hypeusd.K',                       // Kraken
+              'HYPEUSDT_PERP.F',                    // Bitfinex
             ],
           };
 
@@ -128,7 +147,7 @@ jobs:
             return null;
           }
 
-          async function fetchByAsset(pathFn, sleepMs=8000) {
+          async function fetchByAsset(pathFn, sleepMs=10000) {
             const results = [];
             await sleep(4000);
             for (const [asset, syms] of Object.entries(ASSET_SYMBOLS)) {
