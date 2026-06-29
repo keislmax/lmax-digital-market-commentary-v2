@@ -334,15 +334,23 @@ jobs:
 
             try {
               // Liquidation today summary
-              const liqData = await fetchCoinGlass('/api/futures/liquidation/info');
-              console.log('CoinGlass liquidation/info:', JSON.stringify(liqData)?.slice(0, 200));
+              const liqData = await fetchCoinGlass('/api/futures/liquidation/today');
+              // Log FULL response (not truncated) so we can see the actual field names
+              console.log('CoinGlass liquidation/today FULL:', JSON.stringify(liqData));
 
               if (liqData) {
-                // Shape varies — try common field names
-                cgTotalLiqs24h = liqData.liquidationH24 ?? liqData.total ?? liqData.h24Total ?? null;
-                cgLongsLiqs24h = liqData.longLiquidationH24 ?? liqData.longH24 ?? liqData.buyH24 ?? null;
-                cgShortsLiqs24h = liqData.shortLiquidationH24 ?? liqData.shortH24 ?? liqData.sellH24 ?? null;
-                // Convert from millions if needed (CoinGlass sometimes returns USD millions)
+                // Try all known field name variants across CoinGlass API versions
+                cgTotalLiqs24h = liqData.liquidationH24 ?? liqData.total ?? liqData.h24Total
+                  ?? liqData.totalLiquidationH24 ?? liqData.h24 ?? liqData.amount
+                  ?? liqData.liquidationAmount ?? null;
+                cgLongsLiqs24h = liqData.longLiquidationH24 ?? liqData.longH24 ?? liqData.buyH24
+                  ?? liqData.long ?? liqData.buyAmount ?? null;
+                cgShortsLiqs24h = liqData.shortLiquidationH24 ?? liqData.shortH24 ?? liqData.sellH24
+                  ?? liqData.short ?? liqData.sellAmount ?? null;
+                // If response is an array, sum it
+                if (Array.isArray(liqData)) {
+                  cgTotalLiqs24h = liqData.reduce((s,x) => s + (x.liquidationH24 ?? x.total ?? x.amount ?? 0), 0) || null;
+                }
                 if (cgTotalLiqs24h && cgTotalLiqs24h < 1e6) cgTotalLiqs24h *= 1e6;
                 if (cgLongsLiqs24h && cgLongsLiqs24h < 1e6) cgLongsLiqs24h *= 1e6;
                 if (cgShortsLiqs24h && cgShortsLiqs24h < 1e6) cgShortsLiqs24h *= 1e6;
@@ -350,9 +358,10 @@ jobs:
 
               await sleep(3000);
 
-              // Per-coin OI statistics
-              const oiData = await fetchCoinGlass('/api/futures/openInterest/coins-statistics');
-              console.log('CoinGlass OI coins-statistics:', JSON.stringify(oiData)?.slice(0, 300));
+              // Try multiple OI endpoint paths — 404 means wrong path
+              let oiData = await fetchCoinGlass('/api/openInterest/statistics');
+              if (!oiData) oiData = await fetchCoinGlass('/api/openInterest/ex/info');
+              console.log('CoinGlass OI FULL:', JSON.stringify(oiData)?.slice(0, 500));
 
               if (Array.isArray(oiData)) {
                 for (const coin of oiData) {
