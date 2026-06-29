@@ -334,9 +334,9 @@ jobs:
 
             try {
               // Liquidation today summary
-              const liqData = await fetchCoinGlass('/api/futures/liquidation/today');
+              const liqData = await fetchCoinGlass('/api/futures/home/statistics');
               // Log FULL response (not truncated) so we can see the actual field names
-              console.log('CoinGlass liquidation/today FULL:', JSON.stringify(liqData));
+              console.log('CoinGlass home/statistics FULL:', JSON.stringify(liqData));
 
               if (liqData) {
                 // Try all known field name variants across CoinGlass API versions
@@ -361,7 +361,7 @@ jobs:
               // Try multiple OI endpoint paths — 404 means wrong path
               let oiData = await fetchCoinGlass('/api/openInterest/statistics');
               if (!oiData) oiData = await fetchCoinGlass('/api/openInterest/ex/info');
-              console.log('CoinGlass OI FULL:', JSON.stringify(oiData)?.slice(0, 500));
+              console.log('CoinGlass OI FULL:', JSON.stringify(oiData));
 
               if (Array.isArray(oiData)) {
                 for (const coin of oiData) {
