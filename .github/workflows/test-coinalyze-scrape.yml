@@ -1,0 +1,80 @@
+name: Test Coinalyze Scrape
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Test direct HTML fetch (no proxy)
+        run: |
+          node << 'EOF'
+          // Step 1: Try a direct fetch first (will likely 403 from GH Actions)
+          // This tells us whether we need Apify proxies or not
+          const https = require('https');
+
+          function get(url, headers={}) {
+            return new Promise((resolve) => {
+              const u = new URL(url);
+              const req = https.request({
+                hostname: u.hostname,
+                path: u.pathname + u.search,
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                  'Accept-Language': 'en-US,en;q=0.5',
+                  ...headers,
+                },
+              }, r => {
+                let data = '';
+                r.on('data', c => data += c);
+                r.on('end', () => resolve({ status: r.statusCode, body: data }));
+              });
+              req.on('error', e => resolve({ status: 0, error: e.message }));
+              req.end();
+            });
+          }
+
+          async function main() {
+            console.log('Fetching coinalyze.net/markets...');
+            const res = await get('https://coinalyze.net/markets/');
+            console.log('HTTP status:', res.status);
+            console.log('Body length:', res.body?.length || 0);
+
+            if (res.status === 200) {
+              // Parse OI values from HTML
+              // Based on DevTools: data is in <td>$20.0b</td> format
+              // Liquidations 24H is in the header bar
+              const body = res.body;
+
+              // Find the header liquidation total
+              const liqMatch = body.match(/Liquidations 24H[^$]*\$([\d.,]+[bBmMkK])/);
+              console.log('Liquidations 24H:', liqMatch ? liqMatch[1] : 'not found');
+
+              // Find total OI (usually shown as TOTAL: Open Interest: $XX.Xb)
+              const totalOiMatch = body.match(/Open Interest[^$]*\$([\d.,]+[bBmMkK])/);
+              console.log('Total OI:', totalOiMatch ? totalOiMatch[1] : 'not found');
+
+              // Check if BTC OI is in the HTML
+              const btcOiIdx = body.indexOf('$20.');
+              console.log('BTC-like OI value found at index:', btcOiIdx);
+
+              // Show a snippet around open-interest links to understand structure
+              const oiLinkIdx = body.indexOf('/bitcoin/open-interest/');
+              if (oiLinkIdx > -1) {
+                console.log('HTML around BTC OI link:', body.slice(oiLinkIdx - 100, oiLinkIdx + 300));
+              }
+
+            } else if (res.status === 403) {
+              console.log('Got 403 — Cloudflare blocking. Need Apify residential proxy.');
+              console.log('Response preview:', res.body?.slice(0, 200));
+            } else {
+              console.log('Unexpected status. Error:', res.error);
+              console.log('Response preview:', res.body?.slice(0, 200));
+            }
+          }
+
+          main().catch(e => { console.error('Fatal:', e); process.exit(1); });
+          EOF
