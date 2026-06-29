@@ -18,37 +18,59 @@ jobs:
         run: |
           node << 'EOF'
           const https = require('https');
+          const crypto = require('crypto');
+          const zlib = require('zlib');
           const COINALYZE_KEY = process.env.COINALYZE_API_KEY;
           const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
           const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
-
-          function request(url, opts={}) {
-            return new Promise((res) => {
-              const u = new URL(url);
-              const req = https.request({
-                hostname: u.hostname, path: u.pathname + u.search,
-                method: opts.method || 'GET',
-                headers: { 'Content-Type': 'application/json', ...(opts.headers||{}) },
-              }, r => {
-                let data = '';
-                r.on('data', c => data += c);
-                r.on('end', () => { try { res(JSON.parse(data)); } catch { res(null); } });
-              });
-              req.on('error', () => res(null));
-              if (opts.body) req.write(opts.body);
-              req.end();
-            });
-          }
 
           function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
           function nowSec() { return Math.floor(Date.now()/1000); }
           function ago(s) { return nowSec() - s; }
 
+          // ── HTTP helpers ────────────────────────────────────────────────
+          function httpGet(url, headers={}) {
+            return new Promise((resolve) => {
+              const u = new URL(url);
+              const req = https.request({
+                hostname: u.hostname, path: u.pathname + u.search,
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json', ...headers },
+              }, r => {
+                let data = '';
+                r.on('data', c => data += c);
+                r.on('end', () => resolve({ status: r.statusCode, headers: r.headers, body: data }));
+              });
+              req.on('error', e => resolve({ status: 0, error: e.message, headers: {}, body: '' }));
+              req.end();
+            });
+          }
+
+          function httpPost(url, body, headers={}) {
+            return new Promise((resolve) => {
+              const u = new URL(url);
+              const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+              const req = https.request({
+                hostname: u.hostname, path: u.pathname + u.search,
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr), ...headers },
+              }, r => {
+                let data = '';
+                r.on('data', c => data += c);
+                r.on('end', () => resolve({ status: r.statusCode, headers: r.headers, body: data }));
+              });
+              req.on('error', e => resolve({ status: 0, error: e.message, headers: {}, body: '' }));
+              req.write(bodyStr);
+              req.end();
+            });
+          }
+
+          // ── Coinalyze ────────────────────────────────────────────────────
           async function fetchCoinalyze(path, retries=3) {
             for (let i = 0; i < retries; i++) {
-              const data = await request(`https://api.coinalyze.net/v1${path}`, {
-                headers: { 'api_key': COINALYZE_KEY }
-              });
+              const res = await httpGet(`https://api.coinalyze.net/v1${path}`, { 'api_key': COINALYZE_KEY });
+              let data = null;
+              try { data = JSON.parse(res.body); } catch {}
               if (data && !data.message) return data;
               const wait = data?.message ? 62 : 10;
               console.log(`Retry ${i+1}: ${path.split('?')[0]} (${wait}s)`);
@@ -57,65 +79,159 @@ jobs:
             return null;
           }
 
+          // ── Redis ─────────────────────────────────────────────────────────
           async function writeRedis(key, value, ttl=86400) {
             const body = JSON.stringify([['SET', key, JSON.stringify(value), 'EX', String(ttl)]]);
-            const r = await request(`${REDIS_URL}/pipeline`, {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
-              body
+            const r = await httpPost(`${REDIS_URL}/pipeline`, body, {
+              'Authorization': `Bearer ${REDIS_TOKEN}`
             });
-            console.log(`Redis ${key}:`, JSON.stringify(r));
+            console.log(`Redis ${key}:`, r.body?.slice(0, 80));
           }
 
-          // COVERAGE NOTE (verified 23 Jun 2026):
-          // This symbol list is the maximum achievable on Coinalyze's free tier
-          // (40 calls/min rate limit) that completes reliably within 35 min.
-          // It covers ~$29B of the ~$35B OI Coinalyze attributes to these 5 assets
-          // (~82% of the 5-asset universe, ~69% of Coinalyze's full all-coin total
-          // of ~$42B). The remaining gap is smaller venues for these assets plus
-          // all other coins. A paid Coinalyze tier would be needed to close it.
-          // Venues covered: Binance (USDT+USD), Bybit (USDT+inverse), OKX (USDT+USD),
-          // Hyperliquid, and Deribit/Gate.io/Huobi/dYdX per asset.
+          // ── CoinGlass decryption ──────────────────────────────────────────
+          // Reverse-engineered from CoinGlass webpack module 12471 (Xeron2000/coinglass-decrypt).
+          // CoinGlass AES-128-ECB encrypts responses; the decryption key is derived from
+          // constants in their webpack bundle + a token delivered in response headers.
+          // The `v` header selects which webpack constant to use as the first-layer key.
+          // FRAGILITY WARNING: CoinGlass can break this at any time by rotating keys or
+          // changing the encryption scheme. Monitor the `coinglass:status` Redis key for
+          // failures — it's written on every cron run with validation results.
+          const CG_KEY_TABLE = {
+            '55': '170b070da9654622',
+            '66': 'd6537d845a964081',
+            '77': '863f08689c97435b',
+          };
+
+          function aesEcbDecrypt(keyHex, dataB64) {
+            try {
+              const key = Buffer.from(keyHex.padEnd(32, '0').slice(0, 32), 'utf8');
+              const data = Buffer.from(dataB64, 'base64');
+              const decipher = crypto.createDecipheriv('aes-128-ecb', key.slice(0, 16), null);
+              decipher.setAutoPadding(false);
+              return Buffer.concat([decipher.update(data), decipher.final()]);
+            } catch(e) {
+              return null;
+            }
+          }
+
+          function gunzip(buf) {
+            try { return zlib.gunzipSync(buf).toString('utf8'); }
+            catch { try { return buf.toString('utf8'); } catch { return null; } }
+          }
+
+          function decryptCoinGlass(encryptedBody, userTokenB64, v, url='') {
+            try {
+              // Step 1: get first-layer key from constant table or URL
+              let key0;
+              if (v === '1') {
+                key0 = Buffer.from(url).toString('base64').slice(0, 16);
+              } else {
+                key0 = CG_KEY_TABLE[String(v)];
+              }
+              if (!key0) {
+                console.log(`CoinGlass: unknown v=${v}, decryption not possible`);
+                return null;
+              }
+              // Step 2: decrypt user token → gzip(actual_key)
+              const actualKeyGz = aesEcbDecrypt(key0, userTokenB64);
+              if (!actualKeyGz) return null;
+              // Step 3: gunzip → actual AES key
+              const actualKey = gunzip(actualKeyGz);
+              if (!actualKey) return null;
+              // Step 4: decrypt body → gzip(JSON)
+              const jsonGz = aesEcbDecrypt(actualKey.trim(), encryptedBody);
+              if (!jsonGz) return null;
+              // Step 5: gunzip → plain JSON
+              const jsonStr = gunzip(jsonGz);
+              if (!jsonStr) return null;
+              return JSON.parse(jsonStr);
+            } catch(e) {
+              console.log('CoinGlass decrypt error:', e.message);
+              return null;
+            }
+          }
+
+          async function fetchCoinGlass(path, params={}) {
+            try {
+              const qs = new URLSearchParams({ ...params, _t: Date.now() }).toString();
+              const url = `https://capi.coinglass.com${path}`;
+              const fullUrl = `${url}?${qs}`;
+              const res = await httpGet(fullUrl, {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Origin': 'https://www.coinglass.com',
+                'Referer': 'https://www.coinglass.com/',
+                'encryption': 'true',
+              });
+
+              if (res.status !== 200) {
+                console.log(`CoinGlass ${path}: HTTP ${res.status}`);
+                return null;
+              }
+
+              const userToken = res.headers['user'];
+              const v = res.headers['v'];
+
+              if (!userToken || !v) {
+                // Response may not be encrypted — try parsing directly
+                try { return JSON.parse(res.body); } catch {}
+                console.log(`CoinGlass ${path}: no encryption headers, unparseable`);
+                return null;
+              }
+
+              // Parse encrypted body — may be a JSON wrapper like {"code":0,"data":"<encrypted>"}
+              let encryptedPayload = res.body;
+              try {
+                const wrapper = JSON.parse(res.body);
+                if (typeof wrapper?.data === 'string') encryptedPayload = wrapper.data;
+                if (wrapper?.code !== undefined && wrapper?.code !== 0) {
+                  console.log(`CoinGlass ${path}: API error code ${wrapper.code}:`, wrapper.msg);
+                  return null;
+                }
+              } catch {}
+
+              const decrypted = decryptCoinGlass(encryptedPayload, userToken, v, url);
+              if (!decrypted) {
+                console.log(`CoinGlass ${path}: decryption failed`);
+                return null;
+              }
+
+              // If decrypted is a wrapper, unwrap .data
+              if (decrypted?.data !== undefined) return decrypted.data;
+              return decrypted;
+            } catch(e) {
+              console.log(`CoinGlass ${path} error:`, e.message);
+              return null;
+            }
+          }
+
+          // Validate CoinGlass values — returns {ok, reason}
+          function validateCG(totalLiqs, perCoinOI) {
+            const PLAUSIBLE_LIQS_MIN = 10e6;    // $10M — extremely quiet day floor
+            const PLAUSIBLE_LIQS_MAX = 20e9;    // $20B — extreme event ceiling
+            const PLAUSIBLE_OI_MIN = 5e9;       // $5B total OI across 5 assets
+            const PLAUSIBLE_OI_MAX = 500e9;     // $500B ceiling
+
+            if (totalLiqs == null) return { ok: false, reason: 'totalLiqs is null — likely decryption failure or endpoint changed' };
+            if (totalLiqs < PLAUSIBLE_LIQS_MIN) return { ok: false, reason: `totalLiqs $${(totalLiqs/1e6).toFixed(1)}M below $10M floor — likely wrong data` };
+            if (totalLiqs > PLAUSIBLE_LIQS_MAX) return { ok: false, reason: `totalLiqs $${(totalLiqs/1e9).toFixed(1)}B above $20B ceiling — likely wrong data` };
+
+            if (!perCoinOI || Object.keys(perCoinOI).length === 0) return { ok: false, reason: 'perCoinOI is empty — likely decryption failure or endpoint changed' };
+            const totalOI = Object.values(perCoinOI).reduce((s, v) => s + (v || 0), 0);
+            if (totalOI < PLAUSIBLE_OI_MIN) return { ok: false, reason: `OI sum $${(totalOI/1e9).toFixed(1)}B below $5B floor — likely wrong data` };
+            if (totalOI > PLAUSIBLE_OI_MAX) return { ok: false, reason: `OI sum $${(totalOI/1e9).toFixed(1)}B above $500B ceiling — likely wrong data` };
+
+            return { ok: true, reason: 'values within plausible range' };
+          }
+
+          // ── Coinalyze helpers (unchanged from stable cron) ─────────────────
           const ASSET_SYMBOLS = {
-            BTC: [
-              'BTCUSDT_PERP.A','BTCUSD_PERP.A',   // Binance
-              'BTCPERP.6','BTCUSDT.6',             // Bybit
-              'BTCUSDT_PERP.3','BTCUSD_PERP.3',   // OKX
-              'BTC.H',                              // Hyperliquid
-              'BTC-PERPETUAL.2',                    // Deribit
-            ],
-            ETH: [
-              'ETHUSDT_PERP.A','ETHUSD_PERP.A',   // Binance
-              'ETHPERP.6','ETHUSDT.6',             // Bybit
-              'ETHUSDT_PERP.3','ETHUSD_PERP.3',   // OKX
-              'ETH.H',                              // Hyperliquid
-              'ETH-PERPETUAL.2',                    // Deribit
-            ],
-            SOL: [
-              'SOLUSDT_PERP.A','SOLUSD_PERP.A',   // Binance
-              'SOLPERP.6','SOLUSDT.6',             // Bybit
-              'SOLUSDT_PERP.3',                    // OKX
-              'SOL.H',                              // Hyperliquid
-              'SOL_USDT.Y',                         // Gate.io
-              'SOLUSDT_PERP.4',                     // Huobi
-            ],
-            XRP: [
-              'XRPUSDT_PERP.A','XRPUSD_PERP.A',   // Binance
-              'XRPPERP.6','XRPUSDT.6',             // Bybit
-              'XRPUSDT_PERP.3',                    // OKX
-              'XRP.H',                              // Hyperliquid
-              'XRP_USDT.Y',                         // Gate.io
-              'XRPUSDT_PERP.4',                     // Huobi
-            ],
-            HYPE: [
-              'HYPEUSDT_PERP.A',                   // Binance
-              'HYPEPERP.6','HYPEUSDT.6',           // Bybit
-              'HYPEUSDT_PERP.3',                   // OKX
-              'HYPE.H',                             // Hyperliquid
-              'HYPE_USDT.Y',                        // Gate.io
-              'HYPEUSDT_PERP.4',                    // Huobi
-              'HYPE-USD.8',                         // dYdX
-            ],
+            BTC: ['BTCUSDT_PERP.A','BTCUSD_PERP.A','BTCPERP.6','BTCUSDT.6','BTCUSDT_PERP.3','BTCUSD_PERP.3','BTC.H','BTC-PERPETUAL.2'],
+            ETH: ['ETHUSDT_PERP.A','ETHUSD_PERP.A','ETHPERP.6','ETHUSDT.6','ETHUSDT_PERP.3','ETHUSD_PERP.3','ETH.H','ETH-PERPETUAL.2'],
+            SOL: ['SOLUSDT_PERP.A','SOLUSD_PERP.A','SOLPERP.6','SOLUSDT.6','SOLUSDT_PERP.3','SOL.H','SOL_USDT.Y','SOLUSDT_PERP.4'],
+            XRP: ['XRPUSDT_PERP.A','XRPUSD_PERP.A','XRPPERP.6','XRPUSDT.6','XRPUSDT_PERP.3','XRP.H','XRP_USDT.Y','XRPUSDT_PERP.4'],
+            HYPE: ['HYPEUSDT_PERP.A','HYPEPERP.6','HYPEUSDT.6','HYPEUSDT_PERP.3','HYPE.H','HYPE_USDT.Y','HYPEUSDT_PERP.4','HYPE-USD.8'],
           };
 
           function getAsset(symbol) {
@@ -145,7 +261,7 @@ jobs:
           }
 
           function aggregateOI(data) {
-            const byTime = {total:{}, BTC:{}, ETH:{}, SOL:{}, XRP:{}, HYPE:{}};
+            const byTime = {total:{},BTC:{},ETH:{},SOL:{},XRP:{},HYPE:{}};
             for (const sym of (data||[])) {
               const asset = getAsset(sym.symbol||'');
               for (const p of (sym.history||[])) {
@@ -154,139 +270,190 @@ jobs:
               }
             }
             const toArr = obj => Object.entries(obj).map(([t,v])=>({t:+t,v})).sort((a,b)=>a.t-b.t);
-            return { total: toArr(byTime.total), BTC: toArr(byTime.BTC), ETH: toArr(byTime.ETH), SOL: toArr(byTime.SOL), XRP: toArr(byTime.XRP), HYPE: toArr(byTime.HYPE) };
+            return {total:toArr(byTime.total),BTC:toArr(byTime.BTC),ETH:toArr(byTime.ETH),SOL:toArr(byTime.SOL),XRP:toArr(byTime.XRP),HYPE:toArr(byTime.HYPE)};
           }
 
           function aggregateLiq(data) {
-            const byTime = {total:{}, BTC:{}, ETH:{}, SOL:{}, XRP:{}, HYPE:{}};
+            const byTime = {total:{},BTC:{},ETH:{},SOL:{},XRP:{},HYPE:{}};
             for (const sym of (data||[])) {
               const asset = getAsset(sym.symbol||'');
               for (const p of (sym.history||[])) {
-                if (!byTime.total[p.t]) byTime.total[p.t] = {l:0,s:0};
-                byTime.total[p.t].l += p.l||0;
-                byTime.total[p.t].s += p.s||0;
+                if (!byTime.total[p.t]) byTime.total[p.t]={l:0,s:0};
+                byTime.total[p.t].l+=p.l||0; byTime.total[p.t].s+=p.s||0;
                 if (asset) {
-                  if (!byTime[asset][p.t]) byTime[asset][p.t] = {l:0,s:0};
-                  byTime[asset][p.t].l += p.l||0;
-                  byTime[asset][p.t].s += p.s||0;
+                  if (!byTime[asset][p.t]) byTime[asset][p.t]={l:0,s:0};
+                  byTime[asset][p.t].l+=p.l||0; byTime[asset][p.t].s+=p.s||0;
                 }
               }
             }
             const toArr = obj => Object.entries(obj).map(([t,v])=>({t:+t,...v})).sort((a,b)=>a.t-b.t);
-            return { total: toArr(byTime.total), BTC: toArr(byTime.BTC), ETH: toArr(byTime.ETH), SOL: toArr(byTime.SOL), XRP: toArr(byTime.XRP), HYPE: toArr(byTime.HYPE) };
+            return {total:toArr(byTime.total),BTC:toArr(byTime.BTC),ETH:toArr(byTime.ETH),SOL:toArr(byTime.SOL),XRP:toArr(byTime.XRP),HYPE:toArr(byTime.HYPE)};
           }
 
           function aggregateFund(data) {
-            const byTime = {total:{}, BTC:{}, ETH:{}, SOL:{}, XRP:{}, HYPE:{}};
+            const byTime = {total:{},BTC:{},ETH:{},SOL:{},XRP:{},HYPE:{}};
             for (const sym of (data||[])) {
               const asset = getAsset(sym.symbol||'');
               for (const p of (sym.history||[])) {
-                if (!byTime.total[p.t]) byTime.total[p.t] = [];
+                if (!byTime.total[p.t]) byTime.total[p.t]=[];
                 byTime.total[p.t].push(p.o);
                 if (asset) {
-                  if (!byTime[asset][p.t]) byTime[asset][p.t] = [];
+                  if (!byTime[asset][p.t]) byTime[asset][p.t]=[];
                   byTime[asset][p.t].push(p.o);
                 }
               }
             }
-            const toArr = obj => Object.entries(obj)
-              .map(([t,vals])=>({t:+t,v:vals.reduce((a,b)=>a+b,0)/vals.length}))
-              .sort((a,b)=>a.t-b.t);
-            return { total: toArr(byTime.total), BTC: toArr(byTime.BTC), ETH: toArr(byTime.ETH), SOL: toArr(byTime.SOL), XRP: toArr(byTime.XRP), HYPE: toArr(byTime.HYPE) };
+            const toArr = obj => Object.entries(obj).map(([t,vals])=>({t:+t,v:vals.reduce((a,b)=>a+b,0)/vals.length})).sort((a,b)=>a.t-b.t);
+            return {total:toArr(byTime.total),BTC:toArr(byTime.BTC),ETH:toArr(byTime.ETH),SOL:toArr(byTime.SOL),XRP:toArr(byTime.XRP),HYPE:toArr(byTime.HYPE)};
           }
 
-          function buildCharts(h24, h7d, h30d, h90d, h1y, aggregateFn) {
-            const a24  = aggregateFn(h24);
-            const a7d  = aggregateFn(h7d);
-            const a30d = aggregateFn(h30d);
-            const a90d = aggregateFn(h90d);
-            const a1y  = aggregateFn(h1y);
-            const result = {};
+          function buildCharts(h24,h7d,h30d,h90d,h1y,fn) {
+            const [a24,a7d,a30d,a90d,a1y]=[h24,h7d,h30d,h90d,h1y].map(fn);
+            const result={};
             for (const asset of ['total','BTC','ETH','SOL','XRP','HYPE']) {
-              result[asset] = {
-                '24h': a24[asset]  || [],
-                '7d':  a7d[asset]  || [],
-                '30d': a30d[asset] || [],
-                '90d': a90d[asset] || [],
-                '1y':  a1y[asset]  || [],
-              };
+              result[asset]={'24h':a24[asset]||[],'7d':a7d[asset]||[],'30d':a30d[asset]||[],'90d':a90d[asset]||[],'1y':a1y[asset]||[]};
             }
             return result;
           }
 
+          // ── Main ──────────────────────────────────────────────────────────
           async function main() {
-            const from24h = ago(86400);
-            const from7d  = ago(7*86400);
-            const from30d = ago(30*86400);
-            const from90d = ago(90*86400);
-            const from1y  = ago(365*86400);
-            const to = nowSec();
+            const from24h=ago(86400),from7d=ago(7*86400),from30d=ago(30*86400),from90d=ago(90*86400),from1y=ago(365*86400),to=nowSec();
 
-            console.log('=== Fetching current snapshots ===');
-            const oiCurrentRaw   = await fetchByAsset(s => `/open-interest?symbols=${s}&convert_to_usd=true`);
+            // ── Step 1: CoinGlass — true all-market OI and liquidations ──────
+            // These supplement (not replace) the Coinalyze chart data:
+            //   - cgTotalLiqs24h: true all-market liquidation total for Daily Note
+            //   - cgPerCoinOI: true per-coin OI totals for Daily Note
+            // Coinalyze data continues to power the OI/liq CHARTS.
+            console.log('=== Fetching CoinGlass (all-market OI + liquidations) ===');
+            let cgTotalLiqs24h = null;
+            let cgLongsLiqs24h = null;
+            let cgShortsLiqs24h = null;
+            let cgPerCoinOI = {};
+            let cgStatus = { ok: false, reason: 'not attempted', fetchedAt: Date.now() };
+
+            try {
+              // Liquidation today summary
+              const liqData = await fetchCoinGlass('/api/futures/liquidation/info');
+              console.log('CoinGlass liquidation/info:', JSON.stringify(liqData)?.slice(0, 200));
+
+              if (liqData) {
+                // Shape varies — try common field names
+                cgTotalLiqs24h = liqData.liquidationH24 ?? liqData.total ?? liqData.h24Total ?? null;
+                cgLongsLiqs24h = liqData.longLiquidationH24 ?? liqData.longH24 ?? liqData.buyH24 ?? null;
+                cgShortsLiqs24h = liqData.shortLiquidationH24 ?? liqData.shortH24 ?? liqData.sellH24 ?? null;
+                // Convert from millions if needed (CoinGlass sometimes returns USD millions)
+                if (cgTotalLiqs24h && cgTotalLiqs24h < 1e6) cgTotalLiqs24h *= 1e6;
+                if (cgLongsLiqs24h && cgLongsLiqs24h < 1e6) cgLongsLiqs24h *= 1e6;
+                if (cgShortsLiqs24h && cgShortsLiqs24h < 1e6) cgShortsLiqs24h *= 1e6;
+              }
+
+              await sleep(3000);
+
+              // Per-coin OI statistics
+              const oiData = await fetchCoinGlass('/api/futures/openInterest/coins-statistics');
+              console.log('CoinGlass OI coins-statistics:', JSON.stringify(oiData)?.slice(0, 300));
+
+              if (Array.isArray(oiData)) {
+                for (const coin of oiData) {
+                  const symbol = coin.symbol?.toUpperCase();
+                  if (['BTC','ETH','SOL','XRP','HYPE'].includes(symbol)) {
+                    const oi = coin.openInterest ?? coin.oi ?? coin.oiUsd ?? null;
+                    if (oi) cgPerCoinOI[symbol] = oi;
+                  }
+                }
+              }
+
+              cgStatus = {
+                ...validateCG(cgTotalLiqs24h, cgPerCoinOI),
+                totalLiqs24h: cgTotalLiqs24h,
+                perCoinOI: cgPerCoinOI,
+                fetchedAt: Date.now(),
+              };
+            } catch(e) {
+              cgStatus = { ok: false, reason: `Exception: ${e.message}`, fetchedAt: Date.now() };
+            }
+
+            console.log('CoinGlass status:', JSON.stringify(cgStatus));
+            console.log('cgTotalLiqs24h:', cgTotalLiqs24h ? `$${(cgTotalLiqs24h/1e6).toFixed(1)}M` : 'null');
+            console.log('cgPerCoinOI:', JSON.stringify(Object.fromEntries(Object.entries(cgPerCoinOI).map(([k,v])=>[k,'$'+(v/1e9).toFixed(2)+'B']))));
+
+            // Write CoinGlass status to Redis (TTL 25h so it persists through tomorrow's cron)
+            await writeRedis('coinglass:status', cgStatus, 90000);
+
+            // ── Step 2: Coinalyze — chart data (OI/liq/funding history) ──────
+            console.log('=== Fetching Coinalyze (chart data) ===');
+            const oiCurrentRaw   = await fetchByAsset(s=>`/open-interest?symbols=${s}&convert_to_usd=true`);
             await sleep(4000);
-            const fundingCurrent = await fetchByAsset(s => `/funding-rate?symbols=${s}`);
+            const fundingCurrent = await fetchByAsset(s=>`/funding-rate?symbols=${s}`);
             await sleep(4000);
 
-            console.log('=== Fetching 24H data (per asset) ===');
-            const oiH24   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
-            const liqH24  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
-            const fundH24 = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}`);
+            console.log('=== 24H data ===');
+            const oiH24   = await fetchByAsset(s=>`/open-interest-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+            const liqH24  = await fetchByAsset(s=>`/liquidation-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}&convert_to_usd=true`);
+            const fundH24 = await fetchByAsset(s=>`/funding-rate-history?symbols=${s}&interval=1hour&from=${from24h}&to=${to}`);
 
-            console.log('=== Fetching 7D data (per asset) ===');
-            const oiH7d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
-            const liqH7d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
-            const fundH7d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}`);
+            console.log('=== 7D data ===');
+            const oiH7d   = await fetchByAsset(s=>`/open-interest-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
+            const liqH7d  = await fetchByAsset(s=>`/liquidation-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}&convert_to_usd=true`);
+            const fundH7d = await fetchByAsset(s=>`/funding-rate-history?symbols=${s}&interval=daily&from=${from7d}&to=${to}`);
 
-            console.log('=== Fetching 30D data (per asset) ===');
-            const oiH30d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
-            const liqH30d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
-            const fundH30d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}`);
+            console.log('=== 30D data ===');
+            const oiH30d   = await fetchByAsset(s=>`/open-interest-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
+            const liqH30d  = await fetchByAsset(s=>`/liquidation-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}&convert_to_usd=true`);
+            const fundH30d = await fetchByAsset(s=>`/funding-rate-history?symbols=${s}&interval=daily&from=${from30d}&to=${to}`);
 
-            console.log('=== Fetching 90D data (per asset) ===');
-            const oiH90d   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
-            const liqH90d  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
-            const fundH90d = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}`);
+            console.log('=== 90D data ===');
+            const oiH90d   = await fetchByAsset(s=>`/open-interest-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
+            const liqH90d  = await fetchByAsset(s=>`/liquidation-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}&convert_to_usd=true`);
+            const fundH90d = await fetchByAsset(s=>`/funding-rate-history?symbols=${s}&interval=daily&from=${from90d}&to=${to}`);
 
-            console.log('=== Fetching 1Y data (per asset) ===');
-            const oiH1y   = await fetchByAsset(s => `/open-interest-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
-            const liqH1y  = await fetchByAsset(s => `/liquidation-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
-            const fundH1y = await fetchByAsset(s => `/funding-rate-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}`);
+            console.log('=== 1Y data ===');
+            const oiH1y   = await fetchByAsset(s=>`/open-interest-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
+            const liqH1y  = await fetchByAsset(s=>`/liquidation-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}&convert_to_usd=true`);
+            const fundH1y = await fetchByAsset(s=>`/funding-rate-history?symbols=${s}&interval=daily&from=${from1y}&to=${to}`);
 
             console.log('=== Aggregating ===');
             const totalOI = (oiCurrentRaw||[]).reduce((s,x)=>s+(x.value||0),0);
             const avgFunding = (fundingCurrent||[]).length
               ? (fundingCurrent||[]).reduce((s,f)=>s+(f.value||0),0)/(fundingCurrent||[]).length : 0;
 
-            const fundingByAsset = { ALL: avgFunding };
-            for (const [asset, syms] of Object.entries(ASSET_SYMBOLS)) {
-              const rates = (fundingCurrent||[]).filter(f => syms.includes(f.symbol));
-              fundingByAsset[asset] = rates.length
-                ? rates.reduce((s,f)=>s+(f.value||0),0)/rates.length : 0;
+            const fundingByAsset = {ALL:avgFunding};
+            for (const [asset,syms] of Object.entries(ASSET_SYMBOLS)) {
+              const rates = (fundingCurrent||[]).filter(f=>syms.includes(f.symbol));
+              fundingByAsset[asset] = rates.length ? rates.reduce((s,f)=>s+(f.value||0),0)/rates.length : 0;
             }
 
-            const oiCharts   = buildCharts(oiH24,   oiH7d,   oiH30d,   oiH90d,   oiH1y,   aggregateOI);
-            const liqCharts  = buildCharts(liqH24,  liqH7d,  liqH30d,  liqH90d,  liqH1y,  aggregateLiq);
-            const fundCharts = buildCharts(fundH24, fundH7d, fundH30d, fundH90d, fundH1y, aggregateFund);
+            const oiCharts   = buildCharts(oiH24,oiH7d,oiH30d,oiH90d,oiH1y,aggregateOI);
+            const liqCharts  = buildCharts(liqH24,liqH7d,liqH30d,liqH90d,liqH1y,aggregateLiq);
+            const fundCharts = buildCharts(fundH24,fundH7d,fundH30d,fundH90d,fundH1y,aggregateFund);
 
-            const totalChart24h     = oiCharts.total['24h'];
-            const liqTotal24h       = liqCharts.total['24h'];
-            const totalLiqs24h      = liqTotal24h.reduce((s,p)=>s+p.l+p.s,0);
-            const totalLongLiqs24h  = liqTotal24h.reduce((s,p)=>s+p.l,0);
+            const liqTotal24h = liqCharts.total['24h'];
+            const totalLiqs24h = liqTotal24h.reduce((s,p)=>s+p.l+p.s,0);
+            const totalLongLiqs24h = liqTotal24h.reduce((s,p)=>s+p.l,0);
             const totalShortLiqs24h = liqTotal24h.reduce((s,p)=>s+p.s,0);
+            const totalChart24h = oiCharts.total['24h'];
             const oiChange24h = totalChart24h.length>=2
-              ? ((totalChart24h[totalChart24h.length-1].v - totalChart24h[0].v)/totalChart24h[0].v)*100 : 0;
+              ? ((totalChart24h[totalChart24h.length-1].v-totalChart24h[0].v)/totalChart24h[0].v)*100 : 0;
 
-            console.log('totalOI:', totalOI);
-            console.log('totalLiqs24h:', totalLiqs24h);
-            console.log('avgFunding:', avgFunding);
-            console.log('fundingByAsset:', JSON.stringify(fundingByAsset));
+            console.log('Coinalyze totalOI:', totalOI);
+            console.log('Coinalyze totalLiqs24h:', totalLiqs24h);
+            console.log('CoinGlass totalLiqs24h:', cgTotalLiqs24h);
+            console.log('CoinGlass status:', cgStatus.ok ? 'OK' : `FAIL: ${cgStatus.reason}`);
 
             const result = {
+              // Coinalyze data (chart data, funding, 5-asset coverage)
               totalOI, oiChange24h, avgFunding, fundingByAsset,
               totalLiqs24h, totalLongLiqs24h, totalShortLiqs24h,
-              totalVol24h: null,
               oiCharts, liqCharts, fundCharts,
+              // CoinGlass supplemental data (true all-market totals)
+              // cgStatus.ok=true means these are reliable; false means use Coinalyze fallback
+              cgTotalLiqs24h: cgStatus.ok ? cgTotalLiqs24h : null,
+              cgLongsLiqs24h: cgStatus.ok ? cgLongsLiqs24h : null,
+              cgShortsLiqs24h: cgStatus.ok ? cgShortsLiqs24h : null,
+              cgPerCoinOI: cgStatus.ok ? cgPerCoinOI : {},
+              cgStatusOk: cgStatus.ok,
+              totalVol24h: null,
               updatedAt: Date.now(),
             };
 
