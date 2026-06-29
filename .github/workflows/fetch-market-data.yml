@@ -197,8 +197,10 @@ jobs:
                 return null;
               }
 
-              // If decrypted is a wrapper, unwrap .data
-              if (decrypted?.data !== undefined) return decrypted.data;
+              // Log the full decrypted object so we can see the actual structure
+              console.log(`CoinGlass ${path} decrypted:`, JSON.stringify(decrypted));
+              // If decrypted is a wrapper, unwrap .data — but only if data is non-null/non-empty
+              if (decrypted?.data !== undefined && decrypted.data !== null) return decrypted.data;
               return decrypted;
             } catch(e) {
               console.log(`CoinGlass ${path} error:`, e.message);
