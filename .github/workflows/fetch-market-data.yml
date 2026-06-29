@@ -163,6 +163,8 @@ jobs:
                 'Origin': 'https://www.coinglass.com',
                 'Referer': 'https://www.coinglass.com/',
                 'encryption': 'true',
+                'cache-ts-v2': String(Date.now()),
+                'language': 'en',
               });
 
               if (res.status !== 200) {
@@ -335,6 +337,15 @@ jobs:
             let cgStatus = { ok: false, reason: 'not attempted', fetchedAt: Date.now() };
 
             try {
+              // SANITY CHECK: hit the README's documented working endpoint first.
+              // If this returns decrypted RSI data, the decryption pipeline works and
+              // any failure on our target endpoints is an auth/endpoint issue, not a
+              // pipeline issue. If this ALSO comes back empty, the method can't work
+              // from GitHub Actions and we stop pursuing it.
+              const rsiTest = await fetchCoinGlass('/api/spot/rsi/list', { pageSize: 2, pageNum: 1 });
+              console.log('CoinGlass RSI sanity check:', JSON.stringify(rsiTest)?.slice(0, 300));
+              console.log('RSI decryption worked:', rsiTest && (Array.isArray(rsiTest?.list) || Array.isArray(rsiTest)) ? 'YES' : 'NO');
+
               // Liquidation today summary
               const liqData = await fetchCoinGlass('/api/futures/home/statistics');
               // Log FULL response (not truncated) so we can see the actual field names
