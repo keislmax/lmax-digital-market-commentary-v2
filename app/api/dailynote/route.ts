@@ -112,6 +112,13 @@ export async function POST(req: Request) {
     const totalLiqs = c?.liquidations?.total24h ?? null;
     const longsLiqs = c?.liquidations?.longs24h ?? null;
     const shortsLiqs = c?.liquidations?.shorts24h ?? null;
+    // CoinGlass all-market figures (prefer over Coinalyze when available)
+    const cgStatusOk = c?.liquidations?.cgStatusOk ?? false;
+    const cgTotalLiqs = c?.liquidations?.cgTotal24h ?? null;
+    const cgLongsLiqs = c?.liquidations?.cgLongs24h ?? null;
+    const cgShortsLiqs = c?.liquidations?.cgShorts24h ?? null;
+    const cgTraders = c?.liquidations?.cgTraders24h ?? null;
+    const cgLargest = c?.liquidations?.cgLargestLiquidation ?? null;
 
     // ---- Section 3: Options ----
     // The Block's multi-venue ATM vol / realized vol / options OI rows are
@@ -151,7 +158,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       dateStr,
       spot: { rows: spotRows, stablecoins, rwa, btcDominance: btcDom, fearGreed: fgValue, fearGreedLabel: fgLabel },
-      funding: { rows: fundingRows, totalLiqs, longsLiqs, shortsLiqs },
+      funding: { rows: fundingRows, totalLiqs, longsLiqs, shortsLiqs, cgStatusOk, cgTotalLiqs, cgLongsLiqs, cgShortsLiqs, cgTraders, cgLargest },
       options: { btcRv7, btcRv30, ethRv7, ethRv30, optOiBtc, optOiEth, dvol, skew25d },
       etf: { rows: etfRows, strategyValue, strategyHoldings, strategyAvgPrice },
     });
