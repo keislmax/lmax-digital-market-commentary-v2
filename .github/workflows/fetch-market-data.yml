@@ -85,7 +85,9 @@ jobs:
               return { ok: false, reason: 'missing Apify credentials' };
             }
             try {
-              const runUrl = `https://api.apify.com/v2/acts/${COINGLASS_ACTOR_ID}/run-sync?token=${APIFY_TOKEN}&outputRecordKey=OUTPUT&timeout=120`;
+              // timeout=180: actor needs ~70s to load the page + 10s wait + overhead.
+              // memory=1024: Playwright needs at least 1GB RAM for headless Chromium.
+              const runUrl = `https://api.apify.com/v2/acts/${COINGLASS_ACTOR_ID}/run-sync?token=${APIFY_TOKEN}&outputRecordKey=OUTPUT&timeout=180&memory=1024`;
               const result = await request(runUrl, { method: 'POST' });
               console.log('CoinGlass actor result:', JSON.stringify(result)?.slice(0, 500));
 
