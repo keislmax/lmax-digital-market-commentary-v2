@@ -53,13 +53,23 @@ const SECTION: React.CSSProperties = {
 interface DailyNoteData {
   dateStr: string;
   spot: { rows: any[]; stablecoins: number | null; rwa: number | null; btcDominance: number | null; fearGreed: number | null; fearGreedLabel: string | null };
-  funding: { rows: any[]; totalLiqs: number | null; longsLiqs: number | null; shortsLiqs: number | null };
+  funding: { rows: any[]; totalLiqs: number | null; longsLiqs: number | null; shortsLiqs: number | null; cgStatusOk: boolean; cgTotalLiqs: number | null; cgLongsLiqs: number | null; cgShortsLiqs: number | null; cgTraders: number | null; cgLargest: { exchange: string | null; symbol: string | null; value: number | null } | null };
   options: { btcRv7: number | null; btcRv30: number | null; ethRv7: number | null; ethRv30: number | null; optOiBtc: number | null; optOiEth: number | null; dvol: number | null; skew25d: number | null };
   etf: { rows: any[]; strategyValue: number | null; strategyHoldings: number | null; strategyAvgPrice: number | null };
 }
 
 function buildHTML(note: DailyNoteData): string {
   const { dateStr, spot, funding, options, etf } = note;
+
+  // CoinGlass liquidation values — live when cgStatusOk, fallback label otherwise
+  const cg = funding.cgStatusOk;
+  const cgLiqTotal  = cg && funding.cgTotalLiqs  != null ? fmtUSD(funding.cgTotalLiqs)  : 'enter from CoinGlass';
+  const cgLiqLongs  = cg && funding.cgLongsLiqs  != null ? fmtUSD(funding.cgLongsLiqs)  : 'enter from CoinGlass';
+  const cgLiqShorts = cg && funding.cgShortsLiqs != null ? fmtUSD(funding.cgShortsLiqs) : 'enter from CoinGlass';
+  const cgTraders   = cg && funding.cgTraders     != null ? funding.cgTraders.toLocaleString() : 'enter from CoinGlass';
+  const cgLargest   = cg && funding.cgLargest?.value != null
+    ? `${fmtUSD(funding.cgLargest.value)} (${funding.cgLargest.exchange ?? ''} ${funding.cgLargest.symbol ?? ''})`
+    : 'enter from CoinGlass';
 
   const spotRowsHTML = spot.rows.map(r => `
     <tr>
@@ -152,23 +162,23 @@ function buildHTML(note: DailyNoteData): string {
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:16px">
     <tr>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">Total Liquidations 24H, no crying at the casino</td>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700"><b>XXX (enter from Coinglass)</b></td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700"><b>${cgLiqTotal}</b></td>
     </tr>
     <tr>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">Longs Liquidated</td>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700"><b>XXX (enter from Coinglass)</b></td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700"><b>${cgLiqLongs}</b></td>
     </tr>
     <tr>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">Shorts Liquidated</td>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700"><b>XXX (enter from Coinglass)</b></td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700"><b>${cgLiqShorts}</b></td>
     </tr>
     <tr>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#6b7280">Number of Traders Liquidated</td>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700"><b>XXX (enter from Coinglass)</b></td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700"><b>${cgTraders}</b></td>
     </tr>
     <tr>
       <td style="padding:4px 10px;font-size:12px;color:#6b7280">Largest Single Liquidation Order</td>
-      <td style="padding:4px 10px;font-size:12px;text-align:right;font-weight:700"><b>XXX (enter from Coinglass)</b></td>
+      <td style="padding:4px 10px;font-size:12px;text-align:right;font-weight:700"><b>${cgLargest}</b></td>
     </tr>
   </table>
 
@@ -234,7 +244,7 @@ function buildHTML(note: DailyNoteData): string {
 
   <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:28px;width:100%">
     <tr>
-      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are annualized mean rates across major perp venues per asset, computed aggregate, sourced from Coinalyze for all five assets. All liquidation figures entered manually from Coinglass. Stablecoins and RWA TVL from DefiLlama. Strategy holdings from CoinGecko treasury data. ETF flows from Farside Investors; ETF AUM (BTC/ETH/SOL/XRP) from SoSoValue, true net assets; HYPE AUM not published by any free source. Options DVOL, skew and open interest from Deribit only, not a multi-venue aggregate.</i></td>
+      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are annualized mean rates across major perp venues per asset, computed aggregate, sourced from Coinalyze for all five assets. Liquidation figures (total, longs, shorts, traders, largest order) sourced automatically from CoinGlass (coinglass.com/liquidations) each morning; if unavailable, enter manually from CoinGlass. Stablecoins and RWA TVL from DefiLlama. Strategy holdings from CoinGecko treasury data. ETF flows from Farside Investors; ETF AUM (BTC/ETH/SOL/XRP) from SoSoValue, true net assets; HYPE AUM not published by any free source. Options DVOL, skew and open interest from Deribit only, not a multi-venue aggregate.</i></td>
     </tr>
   </table>
 </div>`;
