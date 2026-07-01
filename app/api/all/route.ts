@@ -73,6 +73,16 @@ async function getCoinalyze() {
         longs24h: raw.totalLongLiqs24h || 0,
         shorts24h: raw.totalShortLiqs24h || 0,
         chartsByAsset: raw.liqCharts || {},
+        // CoinGlass all-market figures (true market-wide totals, scraped from
+        // coinglass.com/liquidations — same numbers Nick uses manually).
+        // cgStatusOk=false means the scrape failed; fall back to Coinalyze above.
+        cgStatusOk: raw.cgStatusOk || false,
+        cgStatusReason: raw.cgStatusReason || 'no data',
+        cgTotal24h: raw.cgTotalLiqs24h || null,
+        cgLongs24h: raw.cgLongLiqs24h || null,
+        cgShorts24h: raw.cgShortLiqs24h || null,
+        cgTraders24h: raw.cgTradersLiquidated24h || null,
+        cgLargestLiquidation: raw.cgLargestLiquidation || null,
       },
       volume: {
         total24h: raw.totalVol24h || 0,
