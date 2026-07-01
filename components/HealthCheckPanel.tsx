@@ -42,8 +42,8 @@ const LEGEND: { card: string; source: string; composition: string }[] = [
   },
   {
     card: 'Liquidations',
-    source: 'Coinalyze',
-    composition: 'Sum of longs and shorts liquidated across BTC/ETH/SOL/XRP/HYPE on Binance, Bybit, OKX, Hyperliquid, and Gate.io/Huobi per asset. Covers ~82% of liquidations Coinalyze attributes to these assets (~69% of all-coin total). Ceiling of the free API tier. Refreshed daily via cron.',
+    source: 'CoinGlass + Coinalyze',
+    composition: 'All-market 24H liquidation totals (total/longs/shorts, traders liquidated, largest single order) scraped from CoinGlass (coinglass.com/liquidations) via Apify Playwright actor each morning. Chart data from Coinalyze (~82% of the OI Coinalyze attributes to BTC/ETH/SOL/XRP/HYPE). If CoinGlass scrape fails, headline shows Coinalyze subset. CoinGlass feed status visible below.',
   },
   {
     card: 'Options · Volatility & Skew',
@@ -86,6 +86,7 @@ function StatusIcon({ s }: { s: string }) {
 export default function HealthCheckPanel() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<HealthData | null>(null);
+  const [cgStatus, setCgStatus] = useState<{ ok: boolean; reason: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showLegend, setShowLegend] = useState(false);
 
@@ -93,10 +94,18 @@ export default function HealthCheckPanel() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/health', { cache: 'no-store' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
+      const [healthRes, allRes] = await Promise.all([
+        fetch('/api/health', { cache: 'no-store' }),
+        fetch('/api/all', { cache: 'no-store' }),
+      ]);
+      if (!healthRes.ok) throw new Error(`HTTP ${healthRes.status}`);
+      const json = await healthRes.json();
       setData(json);
+      if (allRes.ok) {
+        const allJson = await allRes.json();
+        const liq = allJson?.derivatives?.liquidations;
+        if (liq) setCgStatus({ ok: liq.cgStatusOk ?? false, reason: liq.cgStatusReason ?? 'no data' });
+      }
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -170,6 +179,28 @@ export default function HealthCheckPanel() {
               </div>
             </div>
           ))}
+          {cgStatus && (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '6px 0', borderTop: '1px solid #f3f4f6', marginTop: 4 }}>
+              <div style={{ marginTop: 1 }}>
+                {cgStatus.ok
+                  ? <CheckCircle2 size={14} color="#16a34a" />
+                  : <AlertTriangle size={14} color="#d97706" />}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#1a1917' }}>CoinGlass Liquidations</span>
+                  <span style={{ fontSize: 10, color: cgStatus.ok ? '#16a34a' : '#d97706', fontWeight: 600 }}>
+                    {cgStatus.ok ? 'live' : 'unavailable'}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                  {cgStatus.ok
+                    ? 'All-market 24H liquidations scraped from coinglass.com — live in dashboard and Daily Note.'
+                    : `Fallback: Daily Note will show "enter from CoinGlass". Reason: ${cgStatus.reason}`}
+                </div>
+              </div>
+            </div>
+          )}
           <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>
             Last checked {new Date(data.checkedAt).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })} SGT. Each feed verified by an independent live call to its source.
           </div>
