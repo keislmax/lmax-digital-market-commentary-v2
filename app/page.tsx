@@ -569,7 +569,7 @@ function SpotEtfCard({ etfFarside, loading }: { etfFarside: any; loading: boolea
 // Replaces BlockMacroCard. Stablecoins + RWA from DefiLlama, Strategy
 // holdings from CoinGecko treasury, ETF AUM from SoSoValue (true market
 // value, not a cumulative-flow figure).
-function MacroCard({ macro, loading }: { macro: any; loading: boolean }) {
+function MacroCard({ macro, c, loading }: { macro: any; c: any; loading: boolean }) {
   const sc = macro?.stablecoins;
   const rwa = macro?.rwa;
   const strategy = macro?.strategy;
@@ -624,9 +624,13 @@ function MacroCard({ macro, loading }: { macro: any; loading: boolean }) {
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM (XRP)</span>
           <span style={{ fontSize: 13, fontWeight: 600 }}>{aumXrp?.latest != null ? fmtUSD(aumXrp.latest) : 'Data Not Published'}</span>
         </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM (HYPE)</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{c?.hypeEtf?.totalMarketCap != null ? fmtUSD(c.hypeEtf.totalMarketCap) : 'Data Not Published'}</span>
+        </div>
       </div>
       <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 8 }}>
-        RWA TVL: sum across DefiLlama&apos;s RWA category, computed aggregate. Strategy holdings: CoinGecko treasury data. ETF AUM: SoSoValue, true net assets.
+        RWA TVL: sum across DefiLlama&apos;s RWA category, computed aggregate. Strategy holdings: CoinGecko treasury data. ETF AUM: BTC/ETH from SoSoValue (true net assets); SOL/XRP/HYPE from CoinGlass (market cap ≈ AUM for spot ETFs).
       </div>
     </div>
   );
@@ -866,7 +870,7 @@ export default function Dashboard() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <SpotEtfCard etfFarside={data?.etf} loading={loading} />
-          <MacroCard macro={macro} loading={loading} />
+          <MacroCard macro={macro} c={c} loading={loading} />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
@@ -901,7 +905,7 @@ export default function Dashboard() {
         </div>
 
         <div style={{ textAlign: 'center', padding: '12px 0 4px', fontSize: 11, color: 'var(--text-muted)' }}>
-          Derivatives & Funding: Coinalyze · ETF Flows: Farside Investors · ETF AUM: SoSoValue · Stablecoins & RWA: DefiLlama · Strategy: CoinGecko · Spot & Global: CoinGecko · Skew, Basis & Options OI: Deribit · Sentiment: Alternative.me
+          Derivatives & Funding: Coinalyze · ETF Flows: Farside Investors · ETF AUM: SoSoValue / CoinGlass · Stablecoins & RWA: DefiLlama · Strategy: CoinGecko · Spot & Global: CoinGecko · Skew, Basis & Options OI: Deribit · Sentiment: Alternative.me
         </div>
 
         {showDailyNote && (
