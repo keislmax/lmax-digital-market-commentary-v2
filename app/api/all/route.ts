@@ -93,6 +93,12 @@ async function getCoinalyze() {
         total24h: raw.totalVol24h || 0,
         chartsByAsset: raw.volCharts || {},
       },
+      // HYPE ETF market cap + today's flow from CoinGlass (coinglass.com/etf/hype)
+      // totalMarketCap ≈ AUM for spot ETFs. null if scrape failed.
+      hypeEtf: {
+        totalMarketCap: raw.cgHypeEtfMarketCap || null,
+        todayFlowUsd: raw.cgHypeEtfFlowUsd ?? null,
+      },
       updatedAt: raw.updatedAt || 0,
     };
   } catch { return null; }
