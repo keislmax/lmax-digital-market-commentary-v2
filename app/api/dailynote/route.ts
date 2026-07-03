@@ -73,8 +73,7 @@ export async function POST(req: Request) {
     const ethRv7  = realizedVol(ethCloses, 7);
     const ethRv30 = realizedVol(ethCloses, 30);
 
-    // ATM implied vol from Deribit term structure (nearest 7D and 30D expiry).
-    // Uses `db` (the destructured deribit object), not `data`.
+    // ATM implied vol from Deribit term structure (BTC only — ETH illiquid at short tenors)
     const btcIv7  = db?.termStructure?.d7  ?? null;
     const btcIv30 = db?.termStructure?.d30 ?? null;
 
@@ -103,7 +102,6 @@ export async function POST(req: Request) {
     const totalLiqs   = c?.liquidations?.total24h ?? null;
     const longsLiqs   = c?.liquidations?.longs24h ?? null;
     const shortsLiqs  = c?.liquidations?.shorts24h ?? null;
-    // CoinGlass all-market figures (true market-wide totals, scraped each morning)
     const cgStatusOk  = c?.liquidations?.cgStatusOk ?? false;
     const cgTotalLiqs = c?.liquidations?.cgTotal24h ?? null;
     const cgLongsLiqs = c?.liquidations?.cgLongs24h ?? null;
@@ -118,17 +116,52 @@ export async function POST(req: Request) {
     const optOiEth = db?.optionsOi?.ethUsd ?? null;
 
     // ---- ETF ----
-    const farsideFlow = (key: 'btc' | 'eth' | 'sol' | 'xrp' | 'hype'): number | null => {
+    // Flow sources: BTC/ETH/SOL/HYPE from Farside; XRP from CoinGlass (Farside doesn't track XRP)
+    // AUM sources: BTC/ETH from SoSoValue (via macro.etfAum); SOL/XRP/HYPE from CoinGlass
+    const farsideFlow = (key: 'btc' | 'eth' | 'sol' | 'hype'): number | null => {
       const v = etfFarside?.[key]?.latest?.total;
       return typeof v === 'number' ? v * 1e6 : null;
     };
     const etfRows = [
-      { asset: 'BTC',  flow: farsideFlow('btc'),  aum: macro?.etfAum?.btc?.latest ?? null, aum30d: macro?.etfAum?.btc?.thirtyDaysAgo ?? null },
-      { asset: 'ETH',  flow: farsideFlow('eth'),  aum: macro?.etfAum?.eth?.latest ?? null, aum30d: macro?.etfAum?.eth?.thirtyDaysAgo ?? null },
-      { asset: 'SOL',  flow: farsideFlow('sol'),  aum: macro?.etfAum?.sol?.latest ?? null, aum30d: macro?.etfAum?.sol?.thirtyDaysAgo ?? null },
-      { asset: 'XRP',  flow: farsideFlow('xrp'),  aum: macro?.etfAum?.xrp?.latest ?? null, aum30d: macro?.etfAum?.xrp?.thirtyDaysAgo ?? null },
-      // HYPE: Farside tracks flows; AUM from CoinGlass (market cap ≈ AUM for spot ETFs)
-      { asset: 'HYPE', flow: farsideFlow('hype'), aum: c?.hypeEtf?.totalMarketCap ?? null, aum30d: null },
+      {
+        asset: 'BTC',
+        flow: farsideFlow('btc'),
+        aum: macro?.etfAum?.btc?.latest ?? null,
+        aum30d: macro?.etfAum?.btc?.thirtyDaysAgo ?? null,
+        flowSource: 'farside',
+      },
+      {
+        asset: 'ETH',
+        flow: farsideFlow('eth'),
+        aum: macro?.etfAum?.eth?.latest ?? null,
+        aum30d: macro?.etfAum?.eth?.thirtyDaysAgo ?? null,
+        flowSource: 'farside',
+      },
+      {
+        asset: 'SOL',
+        flow: farsideFlow('sol'),
+        // AUM from CoinGlass (SoSoValue doesn't publish SOL ETF AUM)
+        aum: c?.solEtf?.totalMarketCap ?? null,
+        aum30d: null,
+        flowSource: 'farside',
+      },
+      {
+        asset: 'XRP',
+        // Flow from CoinGlass (Farside doesn't track XRP ETFs)
+        flow: c?.xrpEtf?.todayFlowUsd ?? null,
+        // AUM from CoinGlass (SoSoValue cross-check available but CoinGlass is primary)
+        aum: c?.xrpEtf?.totalMarketCap ?? null,
+        aum30d: null,
+        flowSource: 'coinglass',
+      },
+      {
+        asset: 'HYPE',
+        flow: farsideFlow('hype'),
+        // AUM from CoinGlass (market cap ≈ AUM for spot ETFs)
+        aum: c?.hypeEtf?.totalMarketCap ?? null,
+        aum30d: null,
+        flowSource: 'farside',
+      },
     ];
     const strategyHoldings = macro?.strategy?.holdings ?? null;
     const strategyAvgPrice = macro?.strategy?.avgPrice ?? null;
