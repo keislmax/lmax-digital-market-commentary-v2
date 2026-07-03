@@ -61,6 +61,11 @@ async function getCoinalyze() {
         current: raw.totalOI || 0,
         change24h: raw.oiChange24h || 0,
         chartsByAsset: raw.oiCharts || {},
+        // CoinGlass all-market OI headline (true all-coin, all-exchange total).
+        // cgAllMarketOI is ~$102B vs Coinalyze subset ~$29B.
+        // Use cgAllMarketOI as the headline when cgStatusOk; chart stays Coinalyze.
+        cgAllMarketOI: raw.cgAllMarketOI || null,
+        cgStatusOk: raw.cgStatusOk || false,
       },
       fundingRate: {
         current: currentFunding,
@@ -73,9 +78,9 @@ async function getCoinalyze() {
         longs24h: raw.totalLongLiqs24h || 0,
         shorts24h: raw.totalShortLiqs24h || 0,
         chartsByAsset: raw.liqCharts || {},
-        // CoinGlass all-market figures (true market-wide totals, scraped from
-        // coinglass.com/liquidations — same numbers Nick uses manually).
-        // cgStatusOk=false means the scrape failed; fall back to Coinalyze above.
+        // CoinGlass all-market liquidation figures (true market-wide totals,
+        // scraped from coinglass.com/liquidations each morning).
+        // cgStatusOk=false → fall back to Coinalyze totalLiqs24h above.
         cgStatusOk: raw.cgStatusOk || false,
         cgStatusReason: raw.cgStatusReason || 'no data',
         cgTotal24h: raw.cgTotalLiqs24h || null,
@@ -209,9 +214,7 @@ async function calcVolTermStructure(currency: string): Promise<{ d7: number | nu
         const ticker = await fetchDeribit('ticker', { instrument_name: calls[0].instrument_name });
         const iv = ticker?.mark_iv;
         results[target.label] = typeof iv === 'number' && iv > 0 ? Math.round(iv * 10) / 10 : null;
-      } catch {
-        results[target.label] = null;
-      }
+      } catch { results[target.label] = null; }
     }
     const d7  = results['d7']  ?? null;
     const d30 = results['d30'] ?? null;
@@ -296,8 +299,6 @@ async function getDeribit() {
   const ethBasis = ethBasisR.status === 'fulfilled' ? ethBasisR.value : { basis: null, expiry: null, daysToExpiry: null };
   const btcPutCall = btcPutCallR.status === 'fulfilled' ? btcPutCallR.value : { ratio: null, putOI: null, callOI: null };
   const termStructure = termStructureR.status === 'fulfilled' ? termStructureR.value : { d7: null, d30: null, d90: null, shape: 'unavailable' };
-  // Deribit-only options OI (decision: show Deribit OI after removing The Block's
-  // multi-venue aggregate; labelled accordingly wherever it's displayed).
   const optionsOi = optionsOiR.status === 'fulfilled' ? optionsOiR.value : { btcUsd: null, ethUsd: null };
 
   const btc24h = btcChartsByTf['24h'] || [];
@@ -317,7 +318,7 @@ async function getDeribit() {
     ethBasis,
     putCallRatio: btcPutCall,
     termStructure,
-    optionsOi, // { btcUsd, ethUsd } — Deribit-only, NOT a multi-venue aggregate
+    optionsOi,
     skewDebug: { btc: btcSkew, eth: ethSkew },
     updatedAt: Date.now(),
   };
@@ -368,12 +369,6 @@ async function getSpotVolume() {
   } catch { return null; }
 }
 
-// ---------- Non-Block macro payload ----------
-// Replaces buildTheBlockData(). Pulls stablecoins, RWA, strategy holdings,
-// and ETF AUM from the new sources. Funding is intentionally NOT here:
-// Coinalyze is now the single source for funding across all five assets
-// (see getCoinalyze() above), so the daily-note/card code reads
-// coinalyze.fundingRate.* directly instead of a separate theblock.funding.*.
 async function getMacro() {
   const [stablecoins, rwa, strategy, etfAum] = await Promise.allSettled([
     getStablecoins(),
