@@ -8,7 +8,7 @@ on:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     steps:
       - name: Fetch and cache market data
         env:
@@ -82,7 +82,7 @@ jobs:
               return { ok: false, reason: 'missing Apify credentials' };
             }
             try {
-              const runUrl = `https://api.apify.com/v2/acts/${COINGLASS_ACTOR_ID}/run-sync?token=${APIFY_TOKEN}&outputRecordKey=OUTPUT&timeout=180&memory=1024`;
+              const runUrl = `https://api.apify.com/v2/acts/${COINGLASS_ACTOR_ID}/run-sync?token=${APIFY_TOKEN}&outputRecordKey=OUTPUT&timeout=150&memory=1024`;
               const result = await request(runUrl, { method: 'POST' });
               console.log('CoinGlass actor result:', JSON.stringify(result)?.slice(0, 600));
               if (!result?.status?.ok) {
