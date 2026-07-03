@@ -290,7 +290,8 @@ function OpenInterestCard({ c, loading }: { c: any; loading: boolean }) {
   const labels = series.map((p: any) => tf === '24h' ? fmtTime(p.t) : fmtDate(p.t));
 
   const lastVal = values.length ? values[values.length - 1] : null;
-  const headline = asset === 'ALL' ? (c?.openInterest?.current ?? lastVal) : lastVal;
+  const cgOI = c?.openInterest?.cgStatusOk ? (c?.openInterest?.cgAllMarketOI ?? null) : null;
+  const headline = asset === 'ALL' ? (cgOI ?? c?.openInterest?.current ?? lastVal) : lastVal;
   const tfChange = values.length >= 2 && values[0]
     ? ((values[values.length - 1] - values[0]) / values[0]) * 100
     : undefined;
@@ -307,7 +308,7 @@ function OpenInterestCard({ c, loading }: { c: any; loading: boolean }) {
     <div className="card" style={{ padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
         <div style={CARD_TITLE_STYLE}>Futures Open Interest</div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Coinalyze</div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{c?.openInterest?.cgAllMarketOI ? 'CoinGlass + Coinalyze' : 'Coinalyze'}</div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
         <div>
@@ -346,7 +347,9 @@ function OpenInterestCard({ c, loading }: { c: any; loading: boolean }) {
           ))}
         </div>
       </div>
-      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.4 }}>{OI_COVERAGE}</div>
+      {c?.openInterest?.cgAllMarketOI
+  ? `CoinGlass all-market OI. Chart and per-asset breakdown from Coinalyze (~$29B, ~82% of 5-asset universe).`
+  : OI_COVERAGE}
     </div>
   );
 }
@@ -888,13 +891,20 @@ export default function Dashboard() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <ChartCard
-            label="Liquidations" source="Coinalyze"
-            snapshotValue={loading ? '...' : formatUSD(c?.liquidations?.total24h || 0)}
-            sub={c?.liquidations ? `Longs: ${formatUSD(c.liquidations.longs24h)} · Shorts: ${formatUSD(c.liquidations.shorts24h)}` : undefined}
-            chartsByAsset={c?.liquidations?.chartsByAsset}
-            color="#dc2626" formatValue={fmtUSD}
-            footer={LIQ_COVERAGE}
-          />
+  label="Liquidations"
+  source={c?.liquidations?.cgStatusOk ? 'CoinGlass' : 'Coinalyze'}
+  snapshotValue={loading ? '...' : formatUSD(
+    c?.liquidations?.cgStatusOk ? (c.liquidations.cgTotal24h || 0) : (c?.liquidations?.total24h || 0)
+  )}
+  sub={c?.liquidations?.cgStatusOk
+    ? `Longs: ${formatUSD(c.liquidations.cgLongs24h)} · Shorts: ${formatUSD(c.liquidations.cgShorts24h)}${c.liquidations.cgTraders24h ? ' · ' + c.liquidations.cgTraders24h.toLocaleString() + ' traders' : ''}`
+    : c?.liquidations ? `Longs: ${formatUSD(c.liquidations.longs24h)} · Shorts: ${formatUSD(c.liquidations.shorts24h)} (Coinalyze ~40% coverage)` : undefined}
+  chartsByAsset={c?.liquidations?.chartsByAsset}
+  color="#dc2626" formatValue={fmtUSD}
+  footer={c?.liquidations?.cgStatusOk
+    ? `All-market 24H liquidations from CoinGlass. Largest: ${(c.liquidations.cgLargestLiquidation?.exchange ?? '')} ${(c.liquidations.cgLargestLiquidation?.symbol ?? '')} ${formatUSD(c.liquidations.cgLargestLiquidation?.value ?? 0)}. Chart: Coinalyze (~82% of 5-asset universe).`
+    : LIQ_COVERAGE}
+/>
           <ChartCard
             label="Spot Volume" source="CoinGecko"
             snapshotValue="..."
