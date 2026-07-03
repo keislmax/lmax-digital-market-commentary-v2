@@ -140,18 +140,18 @@ export async function POST(req: Request) {
       {
         asset: 'SOL',
         flow: farsideFlow('sol'),
-        // AUM from CoinGlass (SoSoValue doesn't publish SOL ETF AUM)
-        aum: c?.solEtf?.totalMarketCap ?? null,
-        aum30d: null,
+        // AUM: SoSoValue primary (via macro.etfAum), CoinGlass as fallback
+        aum: macro?.etfAum?.sol?.latest ?? c?.solEtf?.totalMarketCap ?? null,
+        aum30d: macro?.etfAum?.sol?.thirtyDaysAgo ?? null,
         flowSource: 'farside',
       },
       {
         asset: 'XRP',
         // Flow from CoinGlass (Farside doesn't track XRP ETFs)
         flow: c?.xrpEtf?.todayFlowUsd ?? null,
-        // AUM from CoinGlass (SoSoValue cross-check available but CoinGlass is primary)
-        aum: c?.xrpEtf?.totalMarketCap ?? null,
-        aum30d: null,
+        // AUM: SoSoValue primary (via macro.etfAum), CoinGlass as fallback
+        aum: macro?.etfAum?.xrp?.latest ?? c?.xrpEtf?.totalMarketCap ?? null,
+        aum30d: macro?.etfAum?.xrp?.thirtyDaysAgo ?? null,
         flowSource: 'coinglass',
       },
       {
