@@ -33,29 +33,47 @@ function flowColor(v: number | null | undefined): string {
   return (v as number) >= 0 ? '#166534' : '#991b1b';
 }
 
-const TH: React.CSSProperties = {
-  padding: '5px 10px', fontSize: 11, fontWeight: 700,
-  background: '#1a1917', color: '#fff',
-  textAlign: 'left', whiteSpace: 'nowrap',
-};
-const TD: React.CSSProperties = {
-  padding: '4px 10px', fontSize: 12,
-  borderBottom: '1px solid #e5e7eb',
-  whiteSpace: 'nowrap',
-};
-const TDr: React.CSSProperties = { ...TD, textAlign: 'right' };
-const SECTION: React.CSSProperties = {
-  fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
-  textTransform: 'uppercase', color: '#1a1917',
-  padding: '10px 0 4px',
-};
-
 interface DailyNoteData {
   dateStr: string;
-  spot: { rows: any[]; stablecoins: number | null; rwa: number | null; btcDominance: number | null; fearGreed: number | null; fearGreedLabel: string | null };
-  funding: { rows: any[]; totalLiqs: number | null; longsLiqs: number | null; shortsLiqs: number | null; cgStatusOk: boolean; cgTotalLiqs: number | null; cgLongsLiqs: number | null; cgShortsLiqs: number | null; cgTraders: number | null; cgLargest: { exchange: string | null; symbol: string | null; value: number | null } | null };
-  options: { btcRv7: number | null; btcRv30: number | null; ethRv7: number | null; ethRv30: number | null; optOiBtc: number | null; optOiEth: number | null; dvol: number | null; skew25d: number | null };
-  etf: { rows: any[]; strategyValue: number | null; strategyHoldings: number | null; strategyAvgPrice: number | null };
+  spot: {
+    rows: any[];
+    stablecoins: number | null;
+    rwa: number | null;
+    btcDominance: number | null;
+    fearGreed: number | null;
+    fearGreedLabel: string | null;
+  };
+  funding: {
+    rows: any[];
+    totalLiqs: number | null;
+    longsLiqs: number | null;
+    shortsLiqs: number | null;
+    cgStatusOk: boolean;
+    cgTotalLiqs: number | null;
+    cgLongsLiqs: number | null;
+    cgShortsLiqs: number | null;
+    cgTraders: number | null;
+    cgLargest: { exchange: string | null; symbol: string | null; value: number | null } | null;
+  };
+  options: {
+    btcRv7: number | null;
+    btcRv30: number | null;
+    ethRv7: number | null;
+    ethRv30: number | null;
+    // ATM implied vol from Deribit term structure
+    btcIv7: number | null;   // 1W ATM IV (7D expiry)
+    btcIv30: number | null;  // 1M ATM IV (30D expiry)
+    optOiBtc: number | null;
+    optOiEth: number | null;
+    dvol: number | null;
+    skew25d: number | null;
+  };
+  etf: {
+    rows: any[];
+    strategyValue: number | null;
+    strategyHoldings: number | null;
+    strategyAvgPrice: number | null;
+  };
 }
 
 function buildHTML(note: DailyNoteData): string {
@@ -79,7 +97,6 @@ function buildHTML(note: DailyNoteData): string {
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;color:${pctColor(r.change1m)}">${fmtPct(r.change1m)}</td>
     </tr>`).join('');
 
-  // Single merged funding table, all five assets, single source (Coinalyze).
   const fundingRowsHTML = funding.rows.map((r: any) => `
     <tr>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;font-weight:600">${r.asset}</td>
@@ -98,7 +115,7 @@ function buildHTML(note: DailyNoteData): string {
 
   return `
 <div style="font-family:Arial,sans-serif;max-width:600px;color:#1a1917">
-  <p style="font-size:13px;color:#6b7280;margin:0 0 16px">${dateStr} · LMAX Digital Market Data</p>
+  <p style="font-size:13px;color:#6b7280;margin:0 0 16px">${dateStr} · LMAX Digital</p>
 
   <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 0 4px;margin-bottom:4px">Crypto Market Overview</div>
   <ul style="margin:0 0 20px 0;padding-left:20px;font-size:12px;color:#1a1917;line-height:2">
@@ -114,7 +131,7 @@ function buildHTML(note: DailyNoteData): string {
     <li>&nbsp;</li>
   </ul>
 
-  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 0 4px;margin-bottom:4px">Chatter / Market Sentiment</div>
+  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1a1917;padding:0 0 4px;margin-bottom:4px">Things that make you think</div>
   <ul style="margin:0 0 20px 0;padding-left:20px;font-size:12px;color:#1a1917;line-height:2">
     <li>&nbsp;</li>
     <li>&nbsp;</li>
@@ -188,16 +205,22 @@ function buildHTML(note: DailyNoteData): string {
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:left"></th>
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">1W Realised Vol</th>
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">1M Realised Vol</th>
+      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">1W Implied Vol</th>
+      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">1M Implied Vol</th>
     </tr>
     <tr>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;font-weight:600">BTC</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${options.btcRv7 != null ? fmt(options.btcRv7) + '%' : '—'}</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${options.btcRv30 != null ? fmt(options.btcRv30) + '%' : '—'}</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${options.btcIv7 != null ? fmt(options.btcIv7) + '%' : '—'}</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${options.btcIv30 != null ? fmt(options.btcIv30) + '%' : '—'}</td>
     </tr>
     <tr>
       <td style="padding:4px 10px;font-size:12px;font-weight:600">ETH</td>
       <td style="padding:4px 10px;font-size:12px;text-align:right">${options.ethRv7 != null ? fmt(options.ethRv7) + '%' : '—'}</td>
       <td style="padding:4px 10px;font-size:12px;text-align:right">${options.ethRv30 != null ? fmt(options.ethRv30) + '%' : '—'}</td>
+      <td style="padding:4px 10px;font-size:12px;text-align:right">—</td>
+      <td style="padding:4px 10px;font-size:12px;text-align:right">—</td>
     </tr>
   </table>
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:16px">
@@ -214,7 +237,7 @@ function buildHTML(note: DailyNoteData): string {
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${options.dvol != null ? fmt(options.dvol) + '%' : '—'}</td>
     </tr>
     <tr>
-      <td style="padding:4px 10px;font-size:12px;color:#6b7280">BTC 25D Put/Call Skew</td>
+      <td style="padding:4px 10px;font-size:12px;color:#6b7280">BTC 25D Put/Call Skew (nearest front-month expiry, 7-30D out)</td>
       <td style="padding:4px 10px;font-size:12px;text-align:right;font-weight:600">${options.skew25d != null ? (options.skew25d >= 0 ? '+' : '') + options.skew25d.toFixed(1) : '—'}</td>
     </tr>
   </table>
@@ -244,7 +267,7 @@ function buildHTML(note: DailyNoteData): string {
 
   <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:28px;width:100%">
     <tr>
-      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are annualized mean rates across major perp venues per asset, computed aggregate, sourced from Coinalyze for all five assets. Liquidation figures (total, longs, shorts, traders, largest order) sourced automatically from CoinGlass (coinglass.com/liquidations) each morning; if unavailable, enter manually from CoinGlass. Stablecoins and RWA TVL from DefiLlama. Strategy holdings from CoinGecko treasury data. ETF flows from Farside Investors; ETF AUM (BTC/ETH/SOL/XRP) from SoSoValue, true net assets; HYPE AUM not published by any free source. Options DVOL, skew and open interest from Deribit only, not a multi-venue aggregate.</i></td>
+      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are annualized mean rates across major perp venues per asset, computed aggregate, sourced from Coinalyze for all five assets. Liquidation figures (total, longs, shorts, traders, largest order) sourced automatically from CoinGlass (coinglass.com/liquidations) each morning; if unavailable, enter manually from CoinGlass. Stablecoins and RWA TVL from DefiLlama. Strategy holdings from CoinGecko treasury data. ETF flows and AUM from Farside Investors (BTC/ETH/SOL/HYPE); BTC/ETH/SOL/XRP spot ETF AUM cross-checked against SoSoValue true net assets. Options realized vol from Deribit DVOL index; implied vol (1W/1M) from Deribit ATM options at nearest 7D and 30D expiry. DVOL is Deribit's 30-day implied vol index. 25D skew uses the nearest front-month expiry (7-30 days out). Options OI from Deribit only, not a multi-venue aggregate.</i></td>
     </tr>
   </table>
 </div>`;
