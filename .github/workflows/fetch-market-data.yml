@@ -71,93 +71,48 @@ jobs:
             console.log(`Redis ${key}:`, JSON.stringify(r));
           }
 
-          // CoinGlass all-market liquidation data via Apify Playwright actor.
-          // The actor loads coinglass.com/liquidations in a real browser, lets
-          // CoinGlass's own JS decrypt + render the numbers, then scrapes the
-          // rendered DOM (24h Rekt total/long/short, traders liquidated, largest
-          // single liquidation). No decryption on our end, so this is resilient
-          // to CoinGlass rotating their encryption keys. The actor itself
-          // validates the scraped values (plausible range + long+short=total
-          // consistency check) and only returns data when validation passes.
-          async function fetchCoinGlassLiquidations() {
+          // ── CoinGlass: all-market OI + liquidations via Apify Playwright actor ──
+          // The actor loads coinglass.com/liquidations in a real browser, reads the
+          // rendered header bar (all-market OI + liquidations) and the Total Liquidations
+          // panel. No decryption needed. Validates before storing.
+          // Timeout=180s: actor needs ~70s to load, render, and extract.
+          async function fetchCoinGlassData() {
             if (!APIFY_TOKEN || !COINGLASS_ACTOR_ID) {
-              console.log('CoinGlass: APIFY_API_TOKEN or COINGLASS_ACTOR_ID not set, skipping');
+              console.log('CoinGlass: missing Apify credentials, skipping');
               return { ok: false, reason: 'missing Apify credentials' };
             }
             try {
-              // timeout=180: actor needs ~70s to load the page + 10s wait + overhead.
-              // memory=1024: Playwright needs at least 1GB RAM for headless Chromium.
               const runUrl = `https://api.apify.com/v2/acts/${COINGLASS_ACTOR_ID}/run-sync?token=${APIFY_TOKEN}&outputRecordKey=OUTPUT&timeout=180&memory=1024`;
               const result = await request(runUrl, { method: 'POST' });
-              console.log('CoinGlass actor result:', JSON.stringify(result)?.slice(0, 500));
-
-              if (!result || !result.status) {
-                return { ok: false, reason: 'status.ok false or no data returned' };
-              }
-              if (!result.status.ok) {
-                return { ok: false, reason: result.status.reason || 'validation failed in actor' };
+              console.log('CoinGlass actor result:', JSON.stringify(result)?.slice(0, 600));
+              if (!result?.status?.ok) {
+                return { ok: false, reason: result?.status?.reason || 'validation failed in actor' };
               }
               return {
                 ok: true,
                 reason: 'fetched and validated',
-                data: result.liquidation24h,
+                allMarketOI: result.allMarketOI,
+                liq: result.liquidation24h,
                 fetchedAt: result.fetchedAt,
               };
             } catch(e) {
-              console.log('CoinGlass actor fetch error:', e.message);
+              console.log('CoinGlass actor error:', e.message);
               return { ok: false, reason: `Exception: ${e.message}` };
             }
           }
 
+          // ── Coinalyze symbol list ──────────────────────────────────────────────
           // 8 symbols per asset = 40 calls/metric — the proven maximum for Coinalyze's
-          // free tier 40/min rate limit. All symbols verified against /future-markets
-          // 23 Jun 2026. Covers: Binance (USDT+USD), Bybit (USDT+inverse), OKX
-          // (USDT+USD), Hyperliquid, and Deribit/Gate.io/Huobi/dYdX per asset.
-          // With 10s sleep between assets the rolling 60s window stays well under 40/min.
-          // OI coverage: ~$29B = ~82% of Coinalyze's 5-asset universe ($35B),
-          //              ~69% of Coinalyze's full all-coin total ($42B).
-          // Liquidations: ~40% of all-market (lower and more variable than OI).
-          // Ceiling of Coinalyze free tier. Paid tier required to close the gap.
+          // free tier 40/min rate limit. All symbols verified 23 Jun 2026.
+          // OI coverage: ~$29B = ~82% of the 5-asset universe ($35B), ~69% of all-coin.
+          // Liquidations coverage: ~40% of all-market (lower, variable day to day).
+          // CoinGlass actor above provides the true all-market headline numbers.
           const ASSET_SYMBOLS = {
-            BTC: [
-              'BTCUSDT_PERP.A','BTCUSD_PERP.A',   // Binance
-              'BTCPERP.6','BTCUSDT.6',             // Bybit
-              'BTCUSDT_PERP.3','BTCUSD_PERP.3',   // OKX
-              'BTC.H',                              // Hyperliquid
-              'BTC-PERPETUAL.2',                    // Deribit
-            ],
-            ETH: [
-              'ETHUSDT_PERP.A','ETHUSD_PERP.A',   // Binance
-              'ETHPERP.6','ETHUSDT.6',             // Bybit
-              'ETHUSDT_PERP.3','ETHUSD_PERP.3',   // OKX
-              'ETH.H',                              // Hyperliquid
-              'ETH-PERPETUAL.2',                    // Deribit
-            ],
-            SOL: [
-              'SOLUSDT_PERP.A','SOLUSD_PERP.A',   // Binance
-              'SOLPERP.6','SOLUSDT.6',             // Bybit
-              'SOLUSDT_PERP.3',                    // OKX
-              'SOL.H',                              // Hyperliquid
-              'SOL_USDT.Y',                         // Gate.io
-              'SOLUSDT_PERP.4',                     // Huobi
-            ],
-            XRP: [
-              'XRPUSDT_PERP.A','XRPUSD_PERP.A',   // Binance
-              'XRPPERP.6','XRPUSDT.6',             // Bybit
-              'XRPUSDT_PERP.3',                    // OKX
-              'XRP.H',                              // Hyperliquid
-              'XRP_USDT.Y',                         // Gate.io
-              'XRPUSDT_PERP.4',                     // Huobi
-            ],
-            HYPE: [
-              'HYPEUSDT_PERP.A',                   // Binance
-              'HYPEPERP.6','HYPEUSDT.6',           // Bybit
-              'HYPEUSDT_PERP.3',                   // OKX
-              'HYPE.H',                             // Hyperliquid
-              'HYPE_USDT.Y',                        // Gate.io
-              'HYPEUSDT_PERP.4',                    // Huobi
-              'HYPE-USD.8',                         // dYdX
-            ],
+            BTC: ['BTCUSDT_PERP.A','BTCUSD_PERP.A','BTCPERP.6','BTCUSDT.6','BTCUSDT_PERP.3','BTCUSD_PERP.3','BTC.H','BTC-PERPETUAL.2'],
+            ETH: ['ETHUSDT_PERP.A','ETHUSD_PERP.A','ETHPERP.6','ETHUSDT.6','ETHUSDT_PERP.3','ETHUSD_PERP.3','ETH.H','ETH-PERPETUAL.2'],
+            SOL: ['SOLUSDT_PERP.A','SOLUSD_PERP.A','SOLPERP.6','SOLUSDT.6','SOLUSDT_PERP.3','SOL.H','SOL_USDT.Y','SOLUSDT_PERP.4'],
+            XRP: ['XRPUSDT_PERP.A','XRPUSD_PERP.A','XRPPERP.6','XRPUSDT.6','XRPUSDT_PERP.3','XRP.H','XRP_USDT.Y','XRPUSDT_PERP.4'],
+            HYPE: ['HYPEUSDT_PERP.A','HYPEPERP.6','HYPEUSDT.6','HYPEUSDT_PERP.3','HYPE.H','HYPE_USDT.Y','HYPEUSDT_PERP.4','HYPE-USD.8'],
           };
 
           function getAsset(symbol) {
@@ -247,11 +202,13 @@ jobs:
           async function main() {
             const from24h=ago(86400),from7d=ago(7*86400),from30d=ago(30*86400),from90d=ago(90*86400),from1y=ago(365*86400),to=nowSec();
 
-            console.log('=== Fetching CoinGlass (all-market liquidations via Apify) ===');
-            const cgResult = await fetchCoinGlassLiquidations();
-            console.log('CoinGlass status:', JSON.stringify(cgResult.ok ? {ok:true} : cgResult));
+            // ── Step 1: CoinGlass (all-market OI + liquidations) ─────────────
+            console.log('=== Fetching CoinGlass (all-market OI + liquidations via Apify) ===');
+            const cgResult = await fetchCoinGlassData();
+            console.log('CoinGlass status:', JSON.stringify(cgResult.ok ? { ok: true, allMarketOI: cgResult.allMarketOI } : cgResult));
             await writeRedis('coinglass:status', cgResult, 90000);
 
+            // ── Step 2: Coinalyze (chart time-series, per-asset breakdown) ───
             console.log('=== Fetching current snapshots ===');
             const oiCurrentRaw   = await fetchByAsset(s=>`/open-interest?symbols=${s}&convert_to_usd=true`);
             await sleep(4000);
@@ -306,28 +263,27 @@ jobs:
             const oiChange24h = totalChart24h.length>=2
               ? ((totalChart24h[totalChart24h.length-1].v-totalChart24h[0].v)/totalChart24h[0].v)*100 : 0;
 
-            console.log('totalOI:', totalOI);
-            console.log('totalLiqs24h:', totalLiqs24h);
-            console.log('avgFunding:', avgFunding);
-            console.log('fundingByAsset:', JSON.stringify(fundingByAsset));
+            console.log('Coinalyze totalOI:', totalOI);
+            console.log('Coinalyze totalLiqs24h:', totalLiqs24h);
+            console.log('CoinGlass allMarketOI:', cgResult.ok ? cgResult.allMarketOI : 'unavailable');
+            console.log('CoinGlass totalLiqs24h:', cgResult.ok ? cgResult.liq?.total24h : 'unavailable');
 
             const result = {
+              // Coinalyze chart data (time-series, per-asset breakdown)
               totalOI, oiChange24h, avgFunding, fundingByAsset,
               totalLiqs24h, totalLongLiqs24h, totalShortLiqs24h,
+              oiCharts, liqCharts, fundCharts,
               totalVol24h: null,
-              // CoinGlass all-market liquidation data (true market-wide totals,
-              // matching what Nick reads manually on coinglass.com/liquidations).
-              // null/false fields mean the scrape failed validation — the
-              // dashboard and Daily Note should fall back to the Coinalyze
-              // totalLiqs24h above in that case. Check cgStatusOk first.
+              // CoinGlass all-market headline numbers (true market-wide totals).
+              // cgStatusOk=false → all cg* fields are null, fall back to Coinalyze.
               cgStatusOk: cgResult.ok,
               cgStatusReason: cgResult.reason,
-              cgTotalLiqs24h: cgResult.ok ? cgResult.data.total24h : null,
-              cgLongLiqs24h: cgResult.ok ? cgResult.data.long24h : null,
-              cgShortLiqs24h: cgResult.ok ? cgResult.data.short24h : null,
-              cgTradersLiquidated24h: cgResult.ok ? cgResult.data.tradersLiquidated24h : null,
-              cgLargestLiquidation: cgResult.ok ? cgResult.data.largestLiquidation : null,
-              oiCharts, liqCharts, fundCharts,
+              cgAllMarketOI: cgResult.ok ? cgResult.allMarketOI : null,
+              cgTotalLiqs24h: cgResult.ok ? cgResult.liq?.total24h : null,
+              cgLongLiqs24h: cgResult.ok ? cgResult.liq?.long24h : null,
+              cgShortLiqs24h: cgResult.ok ? cgResult.liq?.short24h : null,
+              cgTradersLiquidated24h: cgResult.ok ? cgResult.liq?.tradersLiquidated24h : null,
+              cgLargestLiquidation: cgResult.ok ? cgResult.liq?.largestLiquidation : null,
               updatedAt: Date.now(),
             };
 
