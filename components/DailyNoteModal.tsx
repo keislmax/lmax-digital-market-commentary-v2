@@ -223,17 +223,11 @@ function buildHTML(note: DailyNoteData): string {
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">1M Implied Vol</th>
     </tr>
     <tr>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;font-weight:600">BTC</td>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${options.btcRv7 != null ? fmt(options.btcRv7) + '%' : '—'}</td>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${options.btcRv30 != null ? fmt(options.btcRv30) + '%' : '—'}</td>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${options.btcIv7 != null ? fmt(options.btcIv7) + '%' : '—'}</td>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${options.btcIv30 != null ? fmt(options.btcIv30) + '%' : '—'}</td>
-    </tr>
-    <tr>
-      <td style="padding:4px 10px;font-size:12px;font-weight:600">ETH</td>
-      <td style="padding:4px 10px;font-size:12px;text-align:right">${options.ethRv7 != null ? fmt(options.ethRv7) + '%' : '—'}</td>
-      <td style="padding:4px 10px;font-size:12px;text-align:right">${options.ethRv30 != null ? fmt(options.ethRv30) + '%' : '—'}</td>
-      <td style="padding:4px 10px;font-size:12px;text-align:right" colspan="2" title="ETH options less liquid at short tenors on Deribit"><span style="color:#9ca3af;font-style:italic">Less liquid on Deribit</span></td>
+      <td style="padding:4px 10px;font-size:12px;font-weight:600">BTC</td>
+      <td style="padding:4px 10px;font-size:12px;text-align:right">${options.btcRv7 != null ? fmt(options.btcRv7) + '%' : '—'}</td>
+      <td style="padding:4px 10px;font-size:12px;text-align:right">${options.btcRv30 != null ? fmt(options.btcRv30) + '%' : '—'}</td>
+      <td style="padding:4px 10px;font-size:12px;text-align:right">${options.btcIv7 != null ? fmt(options.btcIv7) + '%' : '—'}</td>
+      <td style="padding:4px 10px;font-size:12px;text-align:right">${options.btcIv30 != null ? fmt(options.btcIv30) + '%' : '—'}</td>
     </tr>
   </table>
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:16px">
@@ -280,7 +274,7 @@ function buildHTML(note: DailyNoteData): string {
 
   <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:28px;width:100%">
     <tr>
-      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are annualized mean rates across major perp venues per asset, computed aggregate, sourced from Coinalyze for all five assets. Liquidation figures (total, longs, shorts, traders, largest order) sourced automatically from CoinGlass (coinglass.com/liquidations) each morning; if unavailable, enter manually from CoinGlass. Stablecoins and RWA TVL from DefiLlama. Strategy holdings from CoinGecko treasury data. ETF flows from Farside Investors (BTC/ETH/SOL/HYPE); XRP ETF flows from CoinGlass (coinglass.com/etf/xrp). ETF AUM: BTC/ETH from SoSoValue; SOL/XRP/HYPE from CoinGlass (market cap ≈ AUM for spot ETFs). Options realized vol from daily closes (CoinGecko); implied vol (1W/1M BTC only) from Deribit ATM options at nearest 7D and 30D expiry. ETH implied vol not shown — less liquid at short tenors on Deribit. DVOL is Deribit's 30-day implied vol index. 25D skew uses the nearest front-month expiry (7-30 days out). Options OI from Deribit only, not a multi-venue aggregate.</i></td>
+      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are annualized mean rates across major perp venues per asset, computed aggregate, sourced from Coinalyze for all five assets. Liquidation figures (total, longs, shorts, traders, largest order) sourced automatically from CoinGlass (coinglass.com/liquidations) each morning; if unavailable, enter manually from CoinGlass. Stablecoins and RWA TVL from DefiLlama. Strategy holdings from CoinGecko treasury data. ETF flows from Farside Investors (BTC/ETH/SOL/HYPE); XRP ETF flows from CoinGlass (coinglass.com/etf/xrp). ETF AUM: BTC/ETH from SoSoValue; SOL/XRP/HYPE from CoinGlass (market cap ≈ AUM for spot ETFs). Options realized and implied vol shown for BTC only. Realized vol from daily closes (CoinGecko); implied vol (1W/1M) from Deribit ATM options at nearest 7D and 30D expiry. DVOL is Deribit's 30-day implied vol index. 25D skew uses the nearest front-month expiry (7-30 days out). Options OI from Deribit only, not a multi-venue aggregate.</i></td>
     </tr>
   </table>
 </div>`;
