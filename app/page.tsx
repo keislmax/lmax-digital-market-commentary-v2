@@ -288,13 +288,6 @@ function OpenInterestCard({ c, loading }: { c: any; loading: boolean }) {
   const caOI     = c?.openInterest?.current ?? 0;
   const headline = cgOI ?? caOI;
   const change24h = c?.openInterest?.change24h;
-
-  const perAsset = (['BTC', 'ETH', 'SOL', 'XRP', 'HYPE'] as const).map(a => {
-    const chartsByAsset = c?.openInterest?.chartsByAsset || {};
-    const s = chartsByAsset?.[a]?.['24h'] || chartsByAsset?.[a]?.['7d'] || [];
-    return { asset: a, oi: s.length ? s[s.length - 1].v : null };
-  });
-
   const source = cgOI ? 'CoinGlass' : 'Coinalyze';
 
   return (
@@ -303,7 +296,7 @@ function OpenInterestCard({ c, loading }: { c: any; loading: boolean }) {
         <div style={CARD_TITLE_STYLE}>Futures Open Interest</div>
         <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{source}</div>
       </div>
-      <div style={{ marginBottom: 16 }}>
+      <div>
         <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1.1 }}>
           {loading || headline == null ? '...' : fmtUSD(headline)}
         </div>
@@ -312,22 +305,9 @@ function OpenInterestCard({ c, loading }: { c: any; loading: boolean }) {
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>vs 24 hours ago</span>
         </div>
       </div>
-
-      {/* Per-asset breakdown from Coinalyze — directional context, not full coverage */}
-      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
-          {perAsset.map(p => (
-            <div key={p.asset} style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>{p.asset}</div>
-              <div style={{ fontSize: 12, fontWeight: 600, marginTop: 3 }}>{p.oi != null ? fmtUSD(p.oi) : '—'}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.4 }}>
+      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.4 }}>
         {cgOI
-          ? 'All-market OI from CoinGlass (all coins, all exchanges). Per-asset figures are Coinalyze directional context only (~$29B subset, not a full-market breakdown). Source: CoinGlass + Coinalyze.'
+          ? 'All-market open interest across all coins and exchanges. Source: CoinGlass.'
           : 'Coinalyze tracked venues (Binance, Bybit, OKX, Hyperliquid, Deribit/Gate.io/Huobi). ~$29B = ~82% of the OI Coinalyze attributes to BTC/ETH/SOL/XRP/HYPE.'}
       </div>
     </div>
