@@ -195,25 +195,58 @@ async function calcVolTermStructure(currency: string): Promise<{ d7: number | nu
       { label: 'd30', ms: 30 * 86400000 },
       { label: 'd90', ms: 90 * 86400000 },
     ];
-    const instruments: any[] = await fetchDeribit('get_instruments', { currency, kind: 'option', expired: 'false' });
+    const [instruments, summary] = await Promise.all([
+      fetchDeribit('get_instruments', { currency, kind: 'option', expired: 'false' }),
+      fetchDeribit('get_book_summary_by_currency', { currency, kind: 'option' }),
+    ]);
     if (!Array.isArray(instruments) || !instruments.length) return { d7: null, d30: null, d90: null, shape: 'unavailable' };
     const idx = await fetchDeribit('get_index_price', { index_name: `${currency.toLowerCase()}_usd` });
     const spot: number = idx?.index_price ?? 0;
     if (!spot) return { d7: null, d30: null, d90: null, shape: 'unavailable' };
+
+    // Build a lookup of mark_iv from book summary (more reliably populated than ticker)
+    const summaryIv: Record<string, number> = {};
+    if (Array.isArray(summary)) {
+      summary.forEach((s: any) => {
+        if (s.instrument_name && typeof s.mark_iv === 'number' && s.mark_iv > 0) {
+          summaryIv[s.instrument_name] = s.mark_iv;
+        }
+      });
+    }
+
     const results: Record<string, number | null> = {};
     for (const target of targets) {
       try {
         const targetTs = now + target.ms;
+        // Find nearest expiry to the target tenor
         const withDiff = instruments.map(i => ({ ...i, diff: Math.abs(i.expiration_timestamp - targetTs) }));
         withDiff.sort((a, b) => a.diff - b.diff);
         const nearestExpiry = withDiff[0]?.expiration_timestamp;
         if (!nearestExpiry) { results[target.label] = null; continue; }
-        const atExpiry = instruments.filter(i => i.expiration_timestamp === nearestExpiry);
-        const calls = atExpiry.filter(i => i.option_type === 'call').sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot));
-        if (!calls.length) { results[target.label] = null; continue; }
-        const ticker = await fetchDeribit('ticker', { instrument_name: calls[0].instrument_name });
-        const iv = ticker?.mark_iv;
-        results[target.label] = typeof iv === 'number' && iv > 0 ? Math.round(iv * 10) / 10 : null;
+
+        // Try up to 5 nearest ATM calls; use the first with a valid IV
+        const atExpiry = instruments.filter(i => i.expiration_timestamp === nearestExpiry && i.option_type === 'call');
+        atExpiry.sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot));
+        const candidates = atExpiry.slice(0, 5);
+
+        let iv: number | null = null;
+
+        // First pass: use summary mark_iv (fastest, no extra API calls)
+        for (const c of candidates) {
+          const siv = summaryIv[c.instrument_name];
+          if (siv && siv > 0) { iv = Math.round(siv * 10) / 10; break; }
+        }
+
+        // Second pass: fetch ticker for the nearest ATM if summary had no IV
+        if (iv == null && candidates.length) {
+          try {
+            const ticker = await fetchDeribit('ticker', { instrument_name: candidates[0].instrument_name });
+            const tiv = ticker?.mark_iv;
+            if (typeof tiv === 'number' && tiv > 0) iv = Math.round(tiv * 10) / 10;
+          } catch {}
+        }
+
+        results[target.label] = iv;
       } catch { results[target.label] = null; }
     }
     const d7  = results['d7']  ?? null;
