@@ -71,11 +71,9 @@ jobs:
             console.log(`Redis ${key}:`, JSON.stringify(r));
           }
 
-          // ── CoinGlass: all-market OI + liquidations via Apify Playwright actor ──
-          // The actor loads coinglass.com/liquidations in a real browser, reads the
-          // rendered header bar (all-market OI + liquidations) and the Total Liquidations
-          // panel. No decryption needed. Validates before storing.
-          // Timeout=180s: actor needs ~70s to load, render, and extract.
+          // ── CoinGlass: all-market OI + liquidations + ETF data via Apify Playwright actor ──
+          // Actor scrapes: coinglass.com/liquidations (OI + liqs), /etf/hype, /etf/solana, /etf/xrp
+          // Timeout=180s: actor needs ~85s to load, render, and extract 4 pages.
           async function fetchCoinGlassData() {
             if (!APIFY_TOKEN || !COINGLASS_ACTOR_ID) {
               console.log('CoinGlass: missing Apify credentials, skipping');
@@ -84,7 +82,7 @@ jobs:
             try {
               const runUrl = `https://api.apify.com/v2/acts/${COINGLASS_ACTOR_ID}/run-sync?token=${APIFY_TOKEN}&outputRecordKey=OUTPUT&timeout=150&memory=1024`;
               const result = await request(runUrl, { method: 'POST' });
-              console.log('CoinGlass actor result:', JSON.stringify(result)?.slice(0, 600));
+              console.log('CoinGlass actor result:', JSON.stringify(result)?.slice(0, 800));
               if (!result?.status?.ok) {
                 return { ok: false, reason: result?.status?.reason || 'validation failed in actor' };
               }
@@ -93,6 +91,9 @@ jobs:
                 reason: 'fetched and validated',
                 allMarketOI: result.allMarketOI,
                 liq: result.liquidation24h,
+                hypeEtf: result.hypeEtf,
+                solEtf: result.solEtf,
+                xrpEtf: result.xrpEtf,
                 fetchedAt: result.fetchedAt,
               };
             } catch(e) {
@@ -102,11 +103,6 @@ jobs:
           }
 
           // ── Coinalyze symbol list ──────────────────────────────────────────────
-          // 8 symbols per asset = 40 calls/metric — the proven maximum for Coinalyze's
-          // free tier 40/min rate limit. All symbols verified 23 Jun 2026.
-          // OI coverage: ~$29B = ~82% of the 5-asset universe ($35B), ~69% of all-coin.
-          // Liquidations coverage: ~40% of all-market (lower, variable day to day).
-          // CoinGlass actor above provides the true all-market headline numbers.
           const ASSET_SYMBOLS = {
             BTC: ['BTCUSDT_PERP.A','BTCUSD_PERP.A','BTCPERP.6','BTCUSDT.6','BTCUSDT_PERP.3','BTCUSD_PERP.3','BTC.H','BTC-PERPETUAL.2'],
             ETH: ['ETHUSDT_PERP.A','ETHUSD_PERP.A','ETHPERP.6','ETHUSDT.6','ETHUSDT_PERP.3','ETHUSD_PERP.3','ETH.H','ETH-PERPETUAL.2'],
@@ -202,10 +198,16 @@ jobs:
           async function main() {
             const from24h=ago(86400),from7d=ago(7*86400),from30d=ago(30*86400),from90d=ago(90*86400),from1y=ago(365*86400),to=nowSec();
 
-            // ── Step 1: CoinGlass (all-market OI + liquidations) ─────────────
-            console.log('=== Fetching CoinGlass (all-market OI + liquidations via Apify) ===');
+            // ── Step 1: CoinGlass (all-market OI + liquidations + ETF AUM/flows) ─
+            console.log('=== Fetching CoinGlass (all-market data via Apify) ===');
             const cgResult = await fetchCoinGlassData();
-            console.log('CoinGlass status:', JSON.stringify(cgResult.ok ? { ok: true, allMarketOI: cgResult.allMarketOI } : cgResult));
+            console.log('CoinGlass status:', JSON.stringify(cgResult.ok ? {
+              ok: true,
+              allMarketOI: cgResult.allMarketOI,
+              hypeEtf: cgResult.hypeEtf,
+              solEtf: cgResult.solEtf,
+              xrpEtf: cgResult.xrpEtf,
+            } : cgResult));
             await writeRedis('coinglass:status', cgResult, 90000);
 
             // ── Step 2: Coinalyze (chart time-series, per-asset breakdown) ───
@@ -267,6 +269,10 @@ jobs:
             console.log('Coinalyze totalLiqs24h:', totalLiqs24h);
             console.log('CoinGlass allMarketOI:', cgResult.ok ? cgResult.allMarketOI : 'unavailable');
             console.log('CoinGlass totalLiqs24h:', cgResult.ok ? cgResult.liq?.total24h : 'unavailable');
+            console.log('CoinGlass HYPE ETF AUM:', cgResult.hypeEtf?.totalMarketCap ?? 'unavailable');
+            console.log('CoinGlass SOL ETF AUM:', cgResult.solEtf?.totalMarketCap ?? 'unavailable');
+            console.log('CoinGlass XRP ETF AUM:', cgResult.xrpEtf?.totalMarketCap ?? 'unavailable');
+            console.log('CoinGlass XRP ETF flow:', cgResult.xrpEtf?.todayFlowUsd ?? 'unavailable');
 
             const result = {
               // Coinalyze chart data (time-series, per-asset breakdown)
@@ -284,8 +290,12 @@ jobs:
               cgShortLiqs24h: cgResult.ok ? cgResult.liq?.short24h : null,
               cgTradersLiquidated24h: cgResult.ok ? cgResult.liq?.tradersLiquidated24h : null,
               cgLargestLiquidation: cgResult.ok ? cgResult.liq?.largestLiquidation : null,
+              // CoinGlass ETF data (AUM ≈ market cap for spot ETFs; flows where Farside doesn't cover)
               cgHypeEtfMarketCap: cgResult.hypeEtf?.totalMarketCap ?? null,
               cgHypeEtfFlowUsd: cgResult.hypeEtf?.todayFlowUsd ?? null,
+              cgSolEtfMarketCap: cgResult.solEtf?.totalMarketCap ?? null,   // AUM only; flows from Farside
+              cgXrpEtfMarketCap: cgResult.xrpEtf?.totalMarketCap ?? null,   // AUM
+              cgXrpEtfFlowUsd: cgResult.xrpEtf?.todayFlowUsd ?? null,       // flow (Farside doesn't track XRP)
               updatedAt: Date.now(),
             };
 
