@@ -82,8 +82,6 @@ export async function POST(req: Request) {
     const btcRv30 = realizedVol(btcCloses, 30);
     const ethRv7 = realizedVol(ethCloses, 7);
     const ethRv30 = realizedVol(ethCloses, 30);
-    const btcIv7 = data?.deribit?.termStructure?.d7 ?? null;
-    const btcIv30 = data?.deribit?.termStructure?.d30 ?? null;
 
     // ---- Section 1: Spot performance ----
     const spotRows = ASSETS.map(a => {
@@ -161,7 +159,7 @@ export async function POST(req: Request) {
       dateStr,
       spot: { rows: spotRows, stablecoins, rwa, btcDominance: btcDom, fearGreed: fgValue, fearGreedLabel: fgLabel },
       funding: { rows: fundingRows, totalLiqs, longsLiqs, shortsLiqs, cgStatusOk, cgTotalLiqs, cgLongsLiqs, cgShortsLiqs, cgTraders, cgLargest },
-      options: { btcRv7, btcRv30, ethRv7, ethRv30, optOiBtc, optOiEth, dvol, skew25d, btcIv7, btcIv30 },
+      options: { btcRv7, btcRv30, ethRv7, ethRv30, optOiBtc, optOiEth, dvol, skew25d },
       etf: { rows: etfRows, strategyValue, strategyHoldings, strategyAvgPrice },
     });
   } catch (e) {
