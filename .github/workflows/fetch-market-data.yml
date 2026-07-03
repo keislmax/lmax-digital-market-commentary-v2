@@ -284,6 +284,8 @@ jobs:
               cgShortLiqs24h: cgResult.ok ? cgResult.liq?.short24h : null,
               cgTradersLiquidated24h: cgResult.ok ? cgResult.liq?.tradersLiquidated24h : null,
               cgLargestLiquidation: cgResult.ok ? cgResult.liq?.largestLiquidation : null,
+              cgHypeEtfMarketCap: cgResult.hypeEtf?.totalMarketCap ?? null,
+              cgHypeEtfFlowUsd: cgResult.hypeEtf?.todayFlowUsd ?? null,
               updatedAt: Date.now(),
             };
 
