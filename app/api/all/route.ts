@@ -61,9 +61,6 @@ async function getCoinalyze() {
         current: raw.totalOI || 0,
         change24h: raw.oiChange24h || 0,
         chartsByAsset: raw.oiCharts || {},
-        // CoinGlass all-market OI headline (true all-coin, all-exchange total).
-        // cgAllMarketOI is ~$102B vs Coinalyze subset ~$29B.
-        // Use cgAllMarketOI as the headline when cgStatusOk; chart stays Coinalyze.
         cgAllMarketOI: raw.cgAllMarketOI || null,
         cgStatusOk: raw.cgStatusOk || false,
       },
@@ -78,9 +75,6 @@ async function getCoinalyze() {
         longs24h: raw.totalLongLiqs24h || 0,
         shorts24h: raw.totalShortLiqs24h || 0,
         chartsByAsset: raw.liqCharts || {},
-        // CoinGlass all-market liquidation figures (true market-wide totals,
-        // scraped from coinglass.com/liquidations each morning).
-        // cgStatusOk=false → fall back to Coinalyze totalLiqs24h above.
         cgStatusOk: raw.cgStatusOk || false,
         cgStatusReason: raw.cgStatusReason || 'no data',
         cgTotal24h: raw.cgTotalLiqs24h || null,
@@ -93,11 +87,19 @@ async function getCoinalyze() {
         total24h: raw.totalVol24h || 0,
         chartsByAsset: raw.volCharts || {},
       },
-      // HYPE ETF market cap + today's flow from CoinGlass (coinglass.com/etf/hype)
-      // totalMarketCap ≈ AUM for spot ETFs. null if scrape failed.
+      // CoinGlass ETF data — AUM (≈ market cap for spot ETFs) and flows where available
       hypeEtf: {
-        totalMarketCap: raw.cgHypeEtfMarketCap || null,
+        totalMarketCap: raw.cgHypeEtfMarketCap ?? null,
         todayFlowUsd: raw.cgHypeEtfFlowUsd ?? null,
+      },
+      solEtf: {
+        // AUM from CoinGlass; flows from Farside (not stored here)
+        totalMarketCap: raw.cgSolEtfMarketCap ?? null,
+      },
+      xrpEtf: {
+        // AUM + flow from CoinGlass (Farside doesn't track XRP)
+        totalMarketCap: raw.cgXrpEtfMarketCap ?? null,
+        todayFlowUsd: raw.cgXrpEtfFlowUsd ?? null,
       },
       updatedAt: raw.updatedAt || 0,
     };
@@ -210,7 +212,6 @@ async function calcVolTermStructure(currency: string): Promise<{ d7: number | nu
     const spot: number = idx?.index_price ?? 0;
     if (!spot) return { d7: null, d30: null, d90: null, shape: 'unavailable' };
 
-    // Build a lookup of mark_iv from book summary (more reliably populated than ticker)
     const summaryIv: Record<string, number> = {};
     if (Array.isArray(summary)) {
       summary.forEach((s: any) => {
@@ -224,26 +225,20 @@ async function calcVolTermStructure(currency: string): Promise<{ d7: number | nu
     for (const target of targets) {
       try {
         const targetTs = now + target.ms;
-        // Find nearest expiry to the target tenor
         const withDiff = instruments.map(i => ({ ...i, diff: Math.abs(i.expiration_timestamp - targetTs) }));
         withDiff.sort((a, b) => a.diff - b.diff);
         const nearestExpiry = withDiff[0]?.expiration_timestamp;
         if (!nearestExpiry) { results[target.label] = null; continue; }
 
-        // Try up to 5 nearest ATM calls; use the first with a valid IV
         const atExpiry = instruments.filter(i => i.expiration_timestamp === nearestExpiry && i.option_type === 'call');
         atExpiry.sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot));
         const candidates = atExpiry.slice(0, 5);
 
         let iv: number | null = null;
-
-        // First pass: use summary mark_iv (fastest, no extra API calls)
         for (const c of candidates) {
           const siv = summaryIv[c.instrument_name];
           if (siv && siv > 0) { iv = Math.round(siv * 10) / 10; break; }
         }
-
-        // Second pass: fetch ticker for the nearest ATM if summary had no IV
         if (iv == null && candidates.length) {
           try {
             const ticker = await fetchDeribit('ticker', { instrument_name: candidates[0].instrument_name });
@@ -251,7 +246,6 @@ async function calcVolTermStructure(currency: string): Promise<{ d7: number | nu
             if (typeof tiv === 'number' && tiv > 0) iv = Math.round(tiv * 10) / 10;
           } catch {}
         }
-
         results[target.label] = iv;
       } catch { results[target.label] = null; }
     }
