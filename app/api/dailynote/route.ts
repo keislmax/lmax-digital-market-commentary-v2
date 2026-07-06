@@ -144,7 +144,7 @@ export async function POST(req: Request) {
       {
         asset: 'XRP',
         flow: c?.xrpEtf?.todayFlowUsd ?? null,
-        aum: macro?.etfAum?.xrp?.latest ?? c?.xrpEtf?.totalMarketCap ?? null,
+        aum: c?.xrpEtf?.totalMarketCap ?? null,
         flowSource: 'coinglass',
         aumSource: 'sosovalue',
       },
