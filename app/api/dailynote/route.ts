@@ -5,11 +5,6 @@ export const maxDuration = 30;
 
 const COINGECKO_KEY = process.env.COINGECKO_API_KEY;
 
-function pctChange(latest?: number | null, prev?: number | null): number | null {
-  if (typeof latest !== 'number' || typeof prev !== 'number' || prev === 0) return null;
-  return ((latest - prev) / Math.abs(prev)) * 100;
-}
-
 function realizedVol(closes: number[], windowDays: number): number | null {
   if (closes.length < windowDays + 1) return null;
   const slice = closes.slice(-(windowDays + 1));
@@ -63,7 +58,7 @@ export async function POST(req: Request) {
     const prices = priceMap?.prices || {};
     const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP', 'HYPE'] as const;
 
-    // ---- Realized vol (CoinGecko daily closes) ----
+    // ---- Realized vol ----
     const [btcCloses, ethCloses] = await Promise.all([
       fetchDailyCloses('bitcoin'),
       fetchDailyCloses('ethereum'),
@@ -73,7 +68,7 @@ export async function POST(req: Request) {
     const ethRv7  = realizedVol(ethCloses, 7);
     const ethRv30 = realizedVol(ethCloses, 30);
 
-    // ATM implied vol from Deribit term structure (BTC only — ETH illiquid at short tenors)
+    // ATM implied vol from Deribit (BTC only)
     const btcIv7  = db?.termStructure?.d7  ?? null;
     const btcIv30 = db?.termStructure?.d30 ?? null;
 
@@ -99,15 +94,12 @@ export async function POST(req: Request) {
       const row = coinalyzeFundingRow(c?.fundingRate, asset);
       return { asset, today: row.today, sevenDaysAgo: row.sevenDaysAgo, source: 'coinalyze' };
     });
-    const totalLiqs   = c?.liquidations?.total24h ?? null;
-    const longsLiqs   = c?.liquidations?.longs24h ?? null;
-    const shortsLiqs  = c?.liquidations?.shorts24h ?? null;
-    const cgStatusOk  = c?.liquidations?.cgStatusOk ?? false;
-    const cgTotalLiqs = c?.liquidations?.cgTotal24h ?? null;
-    const cgLongsLiqs = c?.liquidations?.cgLongs24h ?? null;
+    const cgStatusOk   = c?.liquidations?.cgStatusOk ?? false;
+    const cgTotalLiqs  = c?.liquidations?.cgTotal24h ?? null;
+    const cgLongsLiqs  = c?.liquidations?.cgLongs24h ?? null;
     const cgShortsLiqs = c?.liquidations?.cgShorts24h ?? null;
-    const cgTraders   = c?.liquidations?.cgTraders24h ?? null;
-    const cgLargest   = c?.liquidations?.cgLargestLiquidation ?? null;
+    const cgTraders    = c?.liquidations?.cgTraders24h ?? null;
+    const cgLargest    = c?.liquidations?.cgLargestLiquidation ?? null;
 
     // ---- Options ----
     const dvol     = db?.dvol?.current ?? null;
@@ -116,53 +108,55 @@ export async function POST(req: Request) {
     const optOiEth = db?.optionsOi?.ethUsd ?? null;
 
     // ---- ETF ----
-    // Flow sources: BTC/ETH/SOL/HYPE from Farside; XRP from CoinGlass (Farside doesn't track XRP)
-    // AUM sources: BTC/ETH from SoSoValue (via macro.etfAum); SOL/XRP/HYPE from CoinGlass
+    // Flow: latest day from Farside (BTC/ETH/SOL/HYPE); CoinGlass for XRP
+    // AUM: Farside cumulative total (BTC/ETH/SOL/HYPE); SoSoValue for XRP
     const farsideFlow = (key: 'btc' | 'eth' | 'sol' | 'hype'): number | null => {
       const v = etfFarside?.[key]?.latest?.total;
       return typeof v === 'number' ? v * 1e6 : null;
     };
+    const farsideAum = (key: 'btc' | 'eth' | 'sol' | 'hype'): number | null => {
+      const v = etfFarside?.[key]?.cumulativeTotal;
+      return typeof v === 'number' ? v * 1e6 : null;
+    };
+
     const etfRows = [
       {
         asset: 'BTC',
         flow: farsideFlow('btc'),
-        aum: macro?.etfAum?.btc?.latest ?? null,
-        aum30d: macro?.etfAum?.btc?.thirtyDaysAgo ?? null,
+        aum: farsideAum('btc'),
         flowSource: 'farside',
+        aumSource: 'farside',
       },
       {
         asset: 'ETH',
         flow: farsideFlow('eth'),
-        aum: macro?.etfAum?.eth?.latest ?? null,
-        aum30d: macro?.etfAum?.eth?.thirtyDaysAgo ?? null,
+        aum: farsideAum('eth'),
         flowSource: 'farside',
+        aumSource: 'farside',
       },
       {
         asset: 'SOL',
         flow: farsideFlow('sol'),
-        // AUM: SoSoValue primary (via macro.etfAum), CoinGlass as fallback
-        aum: macro?.etfAum?.sol?.latest ?? c?.solEtf?.totalMarketCap ?? null,
-        aum30d: macro?.etfAum?.sol?.thirtyDaysAgo ?? null,
+        aum: farsideAum('sol'),
         flowSource: 'farside',
+        aumSource: 'farside',
       },
       {
         asset: 'XRP',
-        // Flow from CoinGlass (Farside doesn't track XRP ETFs)
         flow: c?.xrpEtf?.todayFlowUsd ?? null,
-        // AUM: SoSoValue primary (via macro.etfAum), CoinGlass as fallback
         aum: macro?.etfAum?.xrp?.latest ?? c?.xrpEtf?.totalMarketCap ?? null,
-        aum30d: macro?.etfAum?.xrp?.thirtyDaysAgo ?? null,
         flowSource: 'coinglass',
+        aumSource: 'sosovalue',
       },
       {
         asset: 'HYPE',
         flow: farsideFlow('hype'),
-        // AUM from CoinGlass (market cap ≈ AUM for spot ETFs)
-        aum: c?.hypeEtf?.totalMarketCap ?? null,
-        aum30d: null,
+        aum: farsideAum('hype'),
         flowSource: 'farside',
+        aumSource: 'farside',
       },
     ];
+
     const strategyHoldings = macro?.strategy?.holdings ?? null;
     const strategyAvgPrice = macro?.strategy?.avgPrice ?? null;
     const strategyValue    = macro?.strategy?.valueUsd ?? null;
@@ -175,7 +169,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       dateStr,
       spot: { rows: spotRows, stablecoins, rwa, btcDominance: btcDom, fearGreed: fgValue, fearGreedLabel: fgLabel },
-      funding: { rows: fundingRows, totalLiqs, longsLiqs, shortsLiqs, cgStatusOk, cgTotalLiqs, cgLongsLiqs, cgShortsLiqs, cgTraders, cgLargest },
+      funding: { rows: fundingRows, cgStatusOk, cgTotalLiqs, cgLongsLiqs, cgShortsLiqs, cgTraders, cgLargest },
       options: { btcRv7, btcRv30, ethRv7, ethRv30, btcIv7, btcIv30, optOiBtc, optOiEth, dvol, skew25d },
       etf: { rows: etfRows, strategyValue, strategyHoldings, strategyAvgPrice },
     });
