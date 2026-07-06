@@ -899,7 +899,7 @@ export default function Dashboard() {
         </div>
 
         <div style={{ textAlign: 'center', padding: '12px 0 4px', fontSize: 11, color: 'var(--text-muted)' }}>
-          Derivatives & Funding: Coinalyze · ETF Flows: Farside Investors · ETF AUM: SoSoValue / CoinGlass · Stablecoins & RWA: DefiLlama · Strategy: CoinGecko · Spot & Global: CoinGecko · Skew, Basis & Options OI: Deribit · Sentiment: Alternative.me
+          Derivatives & Funding: Coinalyze · ETF Flows: Farside Investors · ETF AUM: Farside / CoinGlass · Stablecoins & RWA: DefiLlama · Strategy: CoinGecko · Spot & Global: CoinGecko · Skew, Basis & Options OI: Deribit · Sentiment: Alternative.me
         </div>
 
         {showDailyNote && (
