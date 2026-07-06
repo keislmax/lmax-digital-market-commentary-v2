@@ -305,9 +305,24 @@ function OpenInterestCard({ c, loading }: { c: any; loading: boolean }) {
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>vs 24 hours ago</span>
         </div>
       </div>
-      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.4 }}>
+      {/* Per-asset breakdown — Coinalyze subset, directional context only */}
+      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+          {(['BTC', 'ETH', 'SOL', 'XRP', 'HYPE'] as const).map(a => {
+            const s = c?.openInterest?.chartsByAsset?.[a]?.['24h'] || c?.openInterest?.chartsByAsset?.[a]?.['7d'] || [];
+            const oi = s.length ? s[s.length - 1].v : null;
+            return (
+              <div key={a} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>{a}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, marginTop: 3 }}>{oi != null ? fmtUSD(oi) : '—'}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.4 }}>
         {cgOI
-          ? 'All-market open interest across all coins and exchanges. Source: CoinGlass.'
+          ? 'All-market OI from CoinGlass (all coins, all exchanges). Per-asset figures are Coinalyze directional context only (~$29B subset). Source: CoinGlass + Coinalyze.'
           : 'Coinalyze tracked venues (Binance, Bybit, OKX, Hyperliquid, Deribit/Gate.io/Huobi). ~$29B = ~82% of the OI Coinalyze attributes to BTC/ETH/SOL/XRP/HYPE.'}
       </div>
     </div>
