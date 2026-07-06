@@ -843,7 +843,7 @@ export default function Dashboard() {
 
         {/* The Volatility & Options card (The Block) has been removed.
             OptionsCard below now also carries Deribit-only options OI. */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 12, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 12, alignItems: 'start', alignItems: 'start' }}>
           <OpenInterestCard c={c} loading={loading} />
           <FundingCard c={c} loading={loading} />
         </div>
