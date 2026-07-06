@@ -549,15 +549,14 @@ function SpotEtfCard({ etfFarside, loading }: { etfFarside: any; loading: boolea
 // Replaces BlockMacroCard. Stablecoins + RWA from DefiLlama, Strategy
 // holdings from CoinGecko treasury, ETF AUM from SoSoValue (true market
 // value, not a cumulative-flow figure).
-function MacroCard({ macro, c, loading }: { macro: any; c: any; loading: boolean }) {
+function MacroCard({ macro, c, etfFarside, loading }: { macro: any; c: any; etfFarside: any; loading: boolean }) {
   const sc = macro?.stablecoins;
   const rwa = macro?.rwa;
   const strategy = macro?.strategy;
-  const aumBtc = macro?.etfAum?.btc;
-  const aumEth = macro?.etfAum?.eth;
-  const aumSol = macro?.etfAum?.sol;
-  const aumXrp = macro?.etfAum?.xrp;
-
+  const aumBtc = typeof etfFarside?.btc?.cumulativeTotal === 'number' ? etfFarside.btc.cumulativeTotal * 1e6 : null;
+  const aumEth = typeof etfFarside?.eth?.cumulativeTotal === 'number' ? etfFarside.eth.cumulativeTotal * 1e6 : null;
+  const aumSol = typeof etfFarside?.sol?.cumulativeTotal === 'number' ? etfFarside.sol.cumulativeTotal * 1e6 : null;
+  const aumXrp = c?.xrpEtf?.totalMarketCap ?? null;
   const values = (sc?.history || []).map((p: any) => p.v);
   const labels = (sc?.history || []).map((p: any) => fmtDate(p.t));
 
@@ -610,7 +609,7 @@ function MacroCard({ macro, c, loading }: { macro: any; c: any; loading: boolean
         </div>
       </div>
       <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 8 }}>
-        RWA TVL: sum across DefiLlama&apos;s RWA category, computed aggregate. Strategy holdings: CoinGecko treasury data. ETF AUM: BTC/ETH from SoSoValue (true net assets); SOL/XRP/HYPE from CoinGlass (market cap ≈ AUM for spot ETFs).
+        RWA TVL: sum across DefiLlama&apos;s RWA category, computed aggregate. Strategy holdings: CoinGecko treasury data. ETF AUM: BTC/ETH/SOL/HYPE cumulative net flow from Farside Investors; XRP from CoinGlass.
       </div>
     </div>
   );
@@ -850,7 +849,7 @@ export default function Dashboard() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <SpotEtfCard etfFarside={data?.etf} loading={loading} />
-          <MacroCard macro={macro} c={c} loading={loading} />
+          <MacroCard macro={macro} c={c} etfFarside={data?.etf} loading={loading} />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
