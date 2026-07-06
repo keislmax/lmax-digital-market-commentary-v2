@@ -589,19 +589,19 @@ function MacroCard({ macro, c, etfFarside, loading }: { macro: any; c: any; etfF
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM (BTC)</span>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{aumBtc?.latest != null ? fmtUSD(aumBtc.latest) : 'Data Not Published'}</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{aumBtc != null ? fmtUSD(aumBtc) : 'Data Not Published'}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM (ETH)</span>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{aumEth?.latest != null ? fmtUSD(aumEth.latest) : 'Data Not Published'}</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{aumEth != null ? fmtUSD(aumEth) : 'Data Not Published'}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM (SOL)</span>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{aumSol?.latest != null ? fmtUSD(aumSol.latest) : 'Data Not Published'}</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{aumSol != null ? fmtUSD(aumSol) : 'Data Not Published'}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM (XRP)</span>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{aumXrp?.latest != null ? fmtUSD(aumXrp.latest) : 'Data Not Published'}</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{aumXrp != null ? fmtUSD(aumXrp) : 'Data Not Published'}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM (HYPE)</span>
