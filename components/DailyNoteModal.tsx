@@ -68,7 +68,7 @@ interface DailyNoteData {
     skew25d: number | null;
   };
   etf: {
-    rows: any[];  // each row: { asset, flow, aum, aum30d, flowSource }
+    rows: any[];  // each row: { asset, flow, aum, flowSource, aumSource }
     strategyValue: number | null;
     strategyHoldings: number | null;
     strategyAvgPrice: number | null;
@@ -87,9 +87,18 @@ function buildHTML(note: DailyNoteData): string {
     ? `${fmtUSD(funding.cgLargest.value)} (${funding.cgLargest.exchange ?? ''} ${funding.cgLargest.symbol ?? ''})`
     : 'enter from CoinGlass';
 
+  // Price formatter: adapts decimals to magnitude (BTC ~$62k vs XRP ~$3)
+  const fmtPrice = (v: number | null | undefined): string => {
+    if (v == null) return '\u2014';
+    if (v >= 1000) return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    if (v >= 1) return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+  };
+
   const spotRowsHTML = spot.rows.map(r => `
     <tr>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;font-weight:600">${r.asset}</td>
+      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmtPrice(r.price)}</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;color:${pctColor(r.change1d)}">${fmtPct(r.change1d)}</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;color:${pctColor(r.change1w)}">${fmtPct(r.change1w)}</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;color:${pctColor(r.change1m)}">${fmtPct(r.change1m)}</td>
@@ -102,7 +111,7 @@ function buildHTML(note: DailyNoteData): string {
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;color:${pctColor(r.sevenDaysAgo)}">${r.sevenDaysAgo != null ? fmtPct(r.sevenDaysAgo) : '—'}</td>
     </tr>`).join('');
 
-  const fmtAum = (v: number | null | undefined) =>
+  const fmtAum = (v: number | null | undefined, dash?: string) =>
     v == null ? '<span style="color:#9ca3af;font-style:italic">Data Not Published</span>' : fmtUSD(v);
 
   // ETF rows: XRP flow shows dash with tooltip if null (Farside doesn't track XRP),
@@ -123,7 +132,6 @@ function buildHTML(note: DailyNoteData): string {
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;font-weight:600">${r.asset}</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${flowCell}</td>
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmtAum(r.aum)}</td>
-      <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmtAum(r.aum30d)}</td>
     </tr>`;
   }).join('');
 
@@ -156,6 +164,7 @@ function buildHTML(note: DailyNoteData): string {
   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:4px">
     <tr>
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:left"></th>
+      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">Price</th>
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">1 day</th>
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">1 week</th>
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">1 month</th>
@@ -255,7 +264,7 @@ function buildHTML(note: DailyNoteData): string {
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:left"></th>
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">Inflow / Outflow</th>
       <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">Total AUM</th>
-      <th style="padding:5px 10px;font-size:11px;font-weight:700;background:#1a1917;color:#fff;text-align:right">AUM 30 days ago</th>
+      
     </tr>
     ${etfRowsHTML}
   </table>
@@ -274,7 +283,7 @@ function buildHTML(note: DailyNoteData): string {
 
   <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:28px;width:100%">
     <tr>
-      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are annualized mean rates across major perp venues per asset, computed aggregate, sourced from Coinalyze for all five assets. Liquidation figures (total, longs, shorts, traders, largest order) sourced automatically from CoinGlass (coinglass.com/liquidations) each morning; if unavailable, enter manually from CoinGlass. Stablecoins and RWA TVL from DefiLlama. Strategy holdings from CoinGecko treasury data. ETF flows from Farside Investors (BTC/ETH/SOL/HYPE); XRP ETF flows from CoinGlass (coinglass.com/etf/xrp). ETF AUM: BTC/ETH from SoSoValue; SOL/XRP/HYPE from CoinGlass (market cap ≈ AUM for spot ETFs). Options realized and implied vol shown for BTC only. Realized vol from daily closes (CoinGecko); implied vol (1W/1M) from Deribit ATM options at nearest 7D and 30D expiry. DVOL is Deribit's 30-day implied vol index. 25D skew uses the nearest front-month expiry (7-30 days out). Options OI from Deribit only, not a multi-venue aggregate.</i></td>
+      <td style="font-size:6pt;line-height:13pt;color:#9ca3af;font-style:italic;font-family:Arial,sans-serif;padding:8px 0 0 0"><i>Funding rates are annualized mean rates across major perp venues per asset, computed aggregate, sourced from Coinalyze for all five assets. Liquidation figures (total, longs, shorts, traders, largest order) sourced automatically from CoinGlass (coinglass.com/liquidations) each morning; if unavailable, enter manually from CoinGlass. Stablecoins and RWA TVL from DefiLlama. Strategy holdings from CoinGecko treasury data. ETF flows from Farside Investors (BTC/ETH/SOL/HYPE); XRP ETF flows from CoinGlass (coinglass.com/etf/xrp). ETF AUM: BTC/ETH/SOL/HYPE cumulative net flow total from Farside Investors; XRP from SoSoValue. Options realized and implied vol shown for BTC only. Realized vol from daily closes (CoinGecko); implied vol (1W/1M) from Deribit ATM options at nearest 7D and 30D expiry. DVOL is Deribit's 30-day implied vol index. 25D skew uses the nearest front-month expiry (7-30 days out). Options OI from Deribit only, not a multi-venue aggregate.</i></td>
     </tr>
   </table>
 </div>`;
