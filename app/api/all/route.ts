@@ -5,7 +5,6 @@ import {
   getRwaTvl,
   getStrategyHoldings,
   getOptionsOi,
-  getEtfAum,
 } from '@/lib/sources';
 
 export const dynamic = 'force-dynamic';
@@ -403,22 +402,15 @@ async function getSpotVolume() {
 }
 
 async function getMacro() {
-  const [stablecoins, rwa, strategy, etfAum] = await Promise.allSettled([
+  const [stablecoins, rwa, strategy] = await Promise.allSettled([
     getStablecoins(),
     getRwaTvl(),
     getStrategyHoldings(),
-    getEtfAum(),
   ]);
   return {
     stablecoins: stablecoins.status === 'fulfilled' ? stablecoins.value : null,
     rwa: rwa.status === 'fulfilled' ? rwa.value : null,
     strategy: strategy.status === 'fulfilled' ? strategy.value : null,
-    etfAum: etfAum.status === 'fulfilled' ? etfAum.value : {
-      btc: { latest: null, thirtyDaysAgo: null },
-      eth: { latest: null, thirtyDaysAgo: null },
-      sol: { latest: null, thirtyDaysAgo: null },
-      xrp: { latest: null, thirtyDaysAgo: null },
-    },
     updatedAt: Date.now(),
   };
 }
