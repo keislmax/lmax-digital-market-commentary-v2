@@ -73,15 +73,46 @@ jobs:
 
           // ── CoinGlass: all-market OI + liquidations + ETF data via Apify Playwright actor ──
           // Actor scrapes: coinglass.com/liquidations (OI + liqs), /etf/hype, /etf/solana, /etf/xrp
-          // Timeout=180s: actor needs ~85s to load, render, and extract 4 pages.
+          // Uses async start + poll instead of run-sync: run-sync's single HTTP timeout
+          // was unreliable because Apify queue + container startup overhead stacked on top
+          // of the ~90s actor runtime, pushing past the timeout. Polling decouples us from
+          // any single timeout — we start the run, then poll status until it finishes.
           async function fetchCoinGlassData() {
             if (!APIFY_TOKEN || !COINGLASS_ACTOR_ID) {
               console.log('CoinGlass: missing Apify credentials, skipping');
               return { ok: false, reason: 'missing Apify credentials' };
             }
             try {
-              const runUrl = `https://api.apify.com/v2/acts/${COINGLASS_ACTOR_ID}/run-sync?token=${APIFY_TOKEN}&outputRecordKey=OUTPUT&timeout=200&memory=1024`;
-              const result = await request(runUrl, { method: 'POST' });
+              // Step 1: start the run asynchronously (memory 1024, actor-level timeout 300s)
+              const startUrl = `https://api.apify.com/v2/acts/${COINGLASS_ACTOR_ID}/runs?token=${APIFY_TOKEN}&memory=1024&timeout=300`;
+              const runResp = await request(startUrl, { method: 'POST' });
+              const runId = runResp?.data?.id;
+              if (!runId) {
+                console.log('CoinGlass: failed to start actor run', JSON.stringify(runResp)?.slice(0, 300));
+                return { ok: false, reason: 'failed to start actor run' };
+              }
+              console.log('CoinGlass actor started, runId:', runId);
+
+              // Step 2: poll status until finished (max ~280s: 28 polls x 10s)
+              const statusUrl = `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`;
+              let status = 'RUNNING';
+              for (let i = 0; i < 28; i++) {
+                await sleep(10000);
+                const statusResp = await request(statusUrl);
+                status = statusResp?.data?.status;
+                console.log(`CoinGlass poll ${i+1}: ${status}`);
+                if (status === 'SUCCEEDED') break;
+                if (status === 'FAILED' || status === 'TIMED-OUT' || status === 'ABORTED') {
+                  return { ok: false, reason: `Actor run ${status}` };
+                }
+              }
+              if (status !== 'SUCCEEDED') {
+                return { ok: false, reason: `Actor did not finish in time (last status: ${status})` };
+              }
+
+              // Step 3: fetch the OUTPUT record from the run's key-value store
+              const outputUrl = `https://api.apify.com/v2/actor-runs/${runId}/key-value-stores/default/records/OUTPUT?token=${APIFY_TOKEN}`;
+              const result = await request(outputUrl);
               console.log('CoinGlass actor result:', JSON.stringify(result)?.slice(0, 800));
               if (!result?.status?.ok) {
                 return { ok: false, reason: result?.status?.reason || 'validation failed in actor' };
