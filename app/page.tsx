@@ -301,7 +301,7 @@ function OpenInterestCard({ c, loading }: { c: any; loading: boolean }) {
         <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{source}</div>
       </div>
       <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1.1 }}>
+        <div style={{ fontSize: 32, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1.1 }}>
           {loading || headline == null ? '...' : fmtUSD(headline)}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
@@ -309,14 +309,14 @@ function OpenInterestCard({ c, loading }: { c: any; loading: boolean }) {
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>vs 24 hours ago</span>
         </div>
       </div>
-      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 4 }}>
         <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>
           24H Liquidations
         </div>
-        <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1.1, marginBottom: 6 }}>
+        <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1.1, marginBottom: 6 }}>
           {loading || cgLiqs == null ? '...' : fmtUSD(cgLiqs)}
         </div>
-        <div style={{ display: 'flex', gap: 16, fontSize: 11, color: 'var(--text-muted)' }}>
+        <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--text-muted)' }}>
           <span>Longs: <span style={{ color: 'var(--red)', fontWeight: 600 }}>{cgLongs != null ? fmtUSD(cgLongs) : '—'}</span></span>
           <span>Shorts: <span style={{ color: 'var(--green)', fontWeight: 600 }}>{cgShorts != null ? fmtUSD(cgShorts) : '—'}</span></span>
         </div>
