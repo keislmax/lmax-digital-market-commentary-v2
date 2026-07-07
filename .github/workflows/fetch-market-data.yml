@@ -93,10 +93,10 @@ jobs:
               }
               console.log('CoinGlass actor started, runId:', runId);
 
-              // Step 2: poll status until finished (max ~280s: 28 polls x 10s)
+              // Step 2: poll status until finished (max ~400s: 40 polls x 10s)
               const statusUrl = `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`;
               let status = 'RUNNING';
-              for (let i = 0; i < 28; i++) {
+              for (let i = 0; i < 40; i++) {
                 await sleep(10000);
                 const statusResp = await request(statusUrl);
                 status = statusResp?.data?.status;
