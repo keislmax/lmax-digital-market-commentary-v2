@@ -284,11 +284,15 @@ function ChartCard({ label, source, snapshotValue, sub, change, chartsByAsset, v
 // Per-asset breakdown retained as directional context (Coinalyze subset).
 
 function OpenInterestCard({ c, loading }: { c: any; loading: boolean }) {
-  const cgOI     = c?.openInterest?.cgStatusOk ? (c?.openInterest?.cgAllMarketOI ?? null) : null;
-  const caOI     = c?.openInterest?.current ?? 0;
-  const headline = cgOI ?? caOI;
+  const cgOI      = c?.openInterest?.cgStatusOk ? (c?.openInterest?.cgAllMarketOI ?? null) : null;
+  const caOI      = c?.openInterest?.current ?? 0;
+  const headline  = cgOI ?? caOI;
   const change24h = c?.openInterest?.change24h;
-  const source = cgOI ? 'CoinGlass' : 'Coinalyze';
+  const source    = cgOI ? 'CoinGlass' : 'Coinalyze';
+
+  const cgLiqs    = c?.liquidations?.cgStatusOk ? c?.liquidations?.cgTotal24h : null;
+  const cgLongs   = c?.liquidations?.cgStatusOk ? c?.liquidations?.cgLongs24h : null;
+  const cgShorts  = c?.liquidations?.cgStatusOk ? c?.liquidations?.cgShorts24h : null;
 
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
@@ -296,7 +300,7 @@ function OpenInterestCard({ c, loading }: { c: any; loading: boolean }) {
         <div style={CARD_TITLE_STYLE}>Futures Open Interest</div>
         <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{source}</div>
       </div>
-      <div>
+      <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1.1 }}>
           {loading || headline == null ? '...' : fmtUSD(headline)}
         </div>
@@ -305,25 +309,20 @@ function OpenInterestCard({ c, loading }: { c: any; loading: boolean }) {
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>vs 24 hours ago</span>
         </div>
       </div>
-      {/* Per-asset breakdown — Coinalyze subset, directional context only */}
-      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
-          {(['BTC', 'ETH', 'SOL', 'XRP', 'HYPE'] as const).map(a => {
-            const s = c?.openInterest?.chartsByAsset?.[a]?.['24h'] || c?.openInterest?.chartsByAsset?.[a]?.['7d'] || [];
-            const oi = s.length ? s[s.length - 1].v : null;
-            return (
-              <div key={a} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>{a}</div>
-                <div style={{ fontSize: 12, fontWeight: 600, marginTop: 3 }}>{oi != null ? fmtUSD(oi) : '—'}</div>
-              </div>
-            );
-          })}
+      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>
+          24H Liquidations
+        </div>
+        <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', lineHeight: 1.1, marginBottom: 6 }}>
+          {loading || cgLiqs == null ? '...' : fmtUSD(cgLiqs)}
+        </div>
+        <div style={{ display: 'flex', gap: 16, fontSize: 11, color: 'var(--text-muted)' }}>
+          <span>Longs: <span style={{ color: 'var(--red)', fontWeight: 600 }}>{cgLongs != null ? fmtUSD(cgLongs) : '—'}</span></span>
+          <span>Shorts: <span style={{ color: 'var(--green)', fontWeight: 600 }}>{cgShorts != null ? fmtUSD(cgShorts) : '—'}</span></span>
         </div>
       </div>
       <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.4 }}>
-        {cgOI
-          ? 'All-market OI from CoinGlass (all coins, all exchanges). Per-asset figures are Coinalyze directional context only (~$29B subset). Source: CoinGlass + Coinalyze.'
-          : 'Coinalyze tracked venues (Binance, Bybit, OKX, Hyperliquid, Deribit/Gate.io/Huobi). ~$29B = ~82% of the OI Coinalyze attributes to BTC/ETH/SOL/XRP/HYPE.'}
+        All-market figures across all coins and exchanges. Source: CoinGlass.
       </div>
     </div>
   );
