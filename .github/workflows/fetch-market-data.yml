@@ -110,8 +110,15 @@ jobs:
                 return { ok: false, reason: `Actor did not finish in time (last status: ${status})` };
               }
 
-              // Step 3: fetch the OUTPUT record from the run's key-value store
-              const outputUrl = `https://api.apify.com/v2/actor-runs/${runId}/key-value-stores/default/records/OUTPUT?token=${APIFY_TOKEN}`;
+              // Step 3: fetch the OUTPUT record — get the KV store ID from the run, then fetch the record
+              const runDetailUrl = `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`;
+              const runDetail = await request(runDetailUrl);
+              const kvStoreId = runDetail?.data?.defaultKeyValueStoreId;
+              if (!kvStoreId) {
+                console.log('CoinGlass: could not get KV store ID from run detail');
+                return { ok: false, reason: 'could not get KV store ID' };
+              }
+              const outputUrl = `https://api.apify.com/v2/key-value-stores/${kvStoreId}/records/OUTPUT?token=${APIFY_TOKEN}`;
               const result = await request(outputUrl);
               console.log('CoinGlass actor result:', JSON.stringify(result)?.slice(0, 800));
               if (!result?.status?.ok) {
