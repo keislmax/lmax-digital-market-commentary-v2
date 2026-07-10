@@ -69,7 +69,7 @@ export default function FearGreedCard({ data, loading }: Props) {
     <div className="card" style={{ padding: '20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
         <div style={CARD_TITLE}>Fear & Greed Index</div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Alternative.me</div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>CoinMarketCap</div>
       </div>
 
       {loading ? <div className="skeleton" style={{ height: 200 }} /> : (
