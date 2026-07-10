@@ -357,18 +357,45 @@ async function getDeribit() {
 }
 
 async function getFearGreed() {
+  const CMC_KEY = process.env.COINMARKETCAP_API_KEY;
   try {
-    const res = await fetch('https://api.alternative.me/fng/?limit=30&format=json', { next: { revalidate: 3600 } });
-    if (!res.ok) throw new Error(`Fear & Greed fetch failed: ${res.status}`);
+    // CMC Fear & Greed — fetch 30 days of history
+    const res = await fetch(
+      'https://pro-api.coinmarketcap.com/v3/fear-and-greed/historical?limit=30',
+      {
+        headers: { 'X-CMC_PRO_API_KEY': CMC_KEY || '', 'Accept': 'application/json' },
+        next: { revalidate: 3600 },
+      }
+    );
+    if (!res.ok) throw new Error(`CMC Fear & Greed fetch failed: ${res.status}`);
     const json = await res.json();
-    const data = json.data as Array<{ value: string; value_classification: string; timestamp: string }>;
-    const current = data[0];
+    // CMC returns data array newest-first: [{value, value_classification, timestamp, ...}]
+    const data: Array<{ value: number; value_classification: string; timestamp: string }> = json.data || [];
+    if (!data.length) throw new Error('No CMC Fear & Greed data');
+    const current   = data[0];
     const yesterday = data[1];
-    const weekAgo = data[7];
-    const monthAgo = data[29];
-    const chart = data.slice(0, 30).reverse().map(d => ({ t: Number(d.timestamp), v: Number(d.value), label: d.value_classification }));
-    return { current: { value: Number(current.value), label: current.value_classification }, changes: { yesterday: yesterday ? Number(current.value) - Number(yesterday.value) : null, weekAgo: weekAgo ? Number(current.value) - Number(weekAgo.value) : null, monthAgo: monthAgo ? Number(current.value) - Number(monthAgo.value) : null }, chart, updatedAt: Date.now() };
-  } catch { return null; }
+    const weekAgo   = data[7];
+    const monthAgo  = data[29];
+    const chart = data.slice(0, 30).reverse().map(d => ({
+      t: Math.floor(new Date(d.timestamp).getTime() / 1000),
+      v: Number(d.value),
+      label: d.value_classification,
+    }));
+    return {
+      current: { value: Number(current.value), label: current.value_classification },
+      changes: {
+        yesterday: yesterday ? Number(current.value) - Number(yesterday.value) : null,
+        weekAgo:   weekAgo   ? Number(current.value) - Number(weekAgo.value)   : null,
+        monthAgo:  monthAgo  ? Number(current.value) - Number(monthAgo.value)  : null,
+      },
+      chart,
+      source: 'CoinMarketCap',
+      updatedAt: Date.now(),
+    };
+  } catch (e) {
+    console.error('CMC Fear & Greed failed:', e);
+    return null;
+  }
 }
 
 async function getETF() {
