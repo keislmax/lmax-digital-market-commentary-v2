@@ -84,7 +84,7 @@ jobs:
             }
             try {
               // Step 1: start the run asynchronously (memory 1024, actor-level timeout 300s)
-              const startUrl = `https://api.apify.com/v2/acts/${COINGLASS_ACTOR_ID}/runs?token=${APIFY_TOKEN}&memory=1024&timeout=300`;
+              const startUrl = `https://api.apify.com/v2/acts/${COINGLASS_ACTOR_ID}/runs?token=${APIFY_TOKEN}&memory=2048&timeout=600`;
               const runResp = await request(startUrl, { method: 'POST' });
               const runId = runResp?.data?.id;
               if (!runId) {
