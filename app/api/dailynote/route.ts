@@ -3,8 +3,6 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
-const COINGECKO_KEY = process.env.COINGECKO_API_KEY;
-
 function realizedVol(closes: number[], windowDays: number): number | null {
   if (closes.length < windowDays + 1) return null;
   const slice = closes.slice(-(windowDays + 1));
@@ -16,19 +14,6 @@ function realizedVol(closes: number[], windowDays: number): number | null {
   const mean = returns.reduce((s, v) => s + v, 0) / returns.length;
   const variance = returns.reduce((s, v) => s + (v - mean) ** 2, 0) / (returns.length - 1);
   return Math.sqrt(variance) * Math.sqrt(365) * 100;
-}
-
-async function fetchDailyCloses(coinId: string): Promise<number[]> {
-  try {
-    const res = await fetch(
-      `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=35&interval=daily&x_cg_demo_api_key=${COINGECKO_KEY}`,
-      { next: { revalidate: 3600 } }
-    );
-    if (!res.ok) return [];
-    const json = await res.json();
-    const prices: [number, number][] = json?.prices || [];
-    return prices.map(p => p[1]).filter(v => typeof v === 'number' && v > 0);
-  } catch { return []; }
 }
 
 function coinalyzeFundingRow(fundingRate: any, asset: string) {
@@ -53,16 +38,16 @@ function coinalyzeFundingRow(fundingRate: any, asset: string) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { prices: priceMap, coinalyze: c, etf: etfFarside, feargreed: fg, deribit: db, macro } = body;
+    const { prices: priceMap, coinalyze: c, etf: etfFarside, feargreed: fg, deribit: db, macro, realizedVol: rvCache } = body;
 
     const prices = priceMap?.prices || {};
     const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP', 'HYPE'] as const;
 
     // ---- Realized vol ----
-    const [btcCloses, ethCloses] = await Promise.all([
-      fetchDailyCloses('bitcoin'),
-      fetchDailyCloses('ethereum'),
-    ]);
+    // Use cached closes from Redis (written by cron, costs 0 CoinGecko credits).
+    // Falls back to empty array if cache is cold — vol columns show — in that case.
+    const btcCloses: number[] = rvCache?.btcCloses || [];
+    const ethCloses: number[] = rvCache?.ethCloses || [];
     const btcRv7  = realizedVol(btcCloses, 7);
     const btcRv30 = realizedVol(btcCloses, 30);
     const ethRv7  = realizedVol(ethCloses, 7);
@@ -108,8 +93,6 @@ export async function POST(req: Request) {
     const optOiEth = db?.optionsOi?.ethUsd ?? null;
 
     // ---- ETF ----
-    // Flow: latest day from Farside (BTC/ETH/SOL/HYPE); CoinGlass for XRP
-    // AUM: Farside cumulative total (BTC/ETH/SOL/HYPE); SoSoValue for XRP
     const farsideFlow = (key: 'btc' | 'eth' | 'sol' | 'hype'): number | null => {
       const v = etfFarside?.[key]?.latest?.total;
       return typeof v === 'number' ? v * 1e6 : null;
@@ -120,41 +103,11 @@ export async function POST(req: Request) {
     };
 
     const etfRows = [
-      {
-        asset: 'BTC',
-        flow: farsideFlow('btc'),
-        aum: farsideAum('btc'),
-        flowSource: 'farside',
-        aumSource: 'farside',
-      },
-      {
-        asset: 'ETH',
-        flow: farsideFlow('eth'),
-        aum: farsideAum('eth'),
-        flowSource: 'farside',
-        aumSource: 'farside',
-      },
-      {
-        asset: 'SOL',
-        flow: farsideFlow('sol'),
-        aum: farsideAum('sol'),
-        flowSource: 'farside',
-        aumSource: 'farside',
-      },
-      {
-        asset: 'XRP',
-        flow: c?.xrpEtf?.todayFlowUsd ?? null,
-        aum: c?.xrpEtf?.totalMarketCap ?? null,
-        flowSource: 'coinglass',
-        aumSource: 'sosovalue',
-      },
-      {
-        asset: 'HYPE',
-        flow: farsideFlow('hype'),
-        aum: farsideAum('hype'),
-        flowSource: 'farside',
-        aumSource: 'farside',
-      },
+      { asset: 'BTC',  flow: farsideFlow('btc'),  aum: farsideAum('btc'),  flowSource: 'farside',   aumSource: 'farside' },
+      { asset: 'ETH',  flow: farsideFlow('eth'),  aum: farsideAum('eth'),  flowSource: 'farside',   aumSource: 'farside' },
+      { asset: 'SOL',  flow: farsideFlow('sol'),  aum: farsideAum('sol'),  flowSource: 'farside',   aumSource: 'farside' },
+      { asset: 'XRP',  flow: c?.xrpEtf?.todayFlowUsd ?? null, aum: c?.xrpEtf?.totalMarketCap ?? null, flowSource: 'coinglass', aumSource: 'coinglass' },
+      { asset: 'HYPE', flow: farsideFlow('hype'), aum: farsideAum('hype'), flowSource: 'farside',   aumSource: 'farside' },
     ];
 
     const strategyHoldings = macro?.strategy?.holdings ?? null;
