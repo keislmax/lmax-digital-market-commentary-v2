@@ -86,17 +86,14 @@ async function getCoinalyze() {
         total24h: raw.totalVol24h || 0,
         chartsByAsset: raw.volCharts || {},
       },
-      // CoinGlass ETF data — AUM (≈ market cap for spot ETFs) and flows where available
       hypeEtf: {
         totalMarketCap: raw.cgHypeEtfMarketCap ?? null,
         todayFlowUsd: raw.cgHypeEtfFlowUsd ?? null,
       },
       solEtf: {
-        // AUM from CoinGlass; flows from Farside (not stored here)
         totalMarketCap: raw.cgSolEtfMarketCap ?? null,
       },
       xrpEtf: {
-        // AUM + flow from CoinGlass (Farside doesn't track XRP)
         totalMarketCap: raw.cgXrpEtfMarketCap ?? null,
         todayFlowUsd: raw.cgXrpEtfFlowUsd ?? null,
       },
@@ -105,7 +102,30 @@ async function getCoinalyze() {
   } catch { return null; }
 }
 
+// ── CoinGecko: read from Redis cache (written by cron), fall back to live API ──
+// Cache key: coingecko:data — written every cron run (~4x/day).
+// Fallback keeps the dashboard working if cache is cold (first deploy, cache expired).
+// Fallback costs CoinGecko credits; cache costs zero.
 async function getPrices() {
+  try {
+    // Try Redis cache first
+    const cached = await redis.get('coingecko:data');
+    if (cached) {
+      const raw: any = typeof cached === 'string' ? JSON.parse(cached) : cached;
+      if (raw?.prices && Object.keys(raw.prices).length > 0) {
+        return {
+          prices: raw.prices,
+          globalMarketCap: raw.globalMarketCap || 0,
+          globalVolume24h: raw.globalVolume24h || 0,
+          btcDominance: raw.btcDominance || 0,
+          ethDominance: raw.ethDominance || 0,
+          updatedAt: raw.updatedAt || Date.now(),
+        };
+      }
+    }
+  } catch {}
+
+  // Fallback: live CoinGecko API (costs credits)
   try {
     const [markets, global] = await Promise.all([
       fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${COINS.join(',')}&price_change_percentage=24h,7d,30d&x_cg_demo_api_key=${COINGECKO_KEY}`, { next: { revalidate: 60 } }).then(r => r.json()),
@@ -359,7 +379,6 @@ async function getDeribit() {
 async function getFearGreed() {
   const CMC_KEY = process.env.COINMARKETCAP_API_KEY;
   try {
-    // CMC Fear & Greed — fetch 30 days of history
     const res = await fetch(
       'https://pro-api.coinmarketcap.com/v3/fear-and-greed/historical?limit=30',
       {
@@ -369,7 +388,6 @@ async function getFearGreed() {
     );
     if (!res.ok) throw new Error(`CMC Fear & Greed fetch failed: ${res.status}`);
     const json = await res.json();
-    // CMC returns data array newest-first: [{value, value_classification, timestamp, ...}]
     const data: Array<{ value: number; value_classification: string; timestamp: string }> = json.data || [];
     if (!data.length) throw new Error('No CMC Fear & Greed data');
     const current   = data[0];
@@ -411,7 +429,19 @@ async function getETF() {
   } catch { return null; }
 }
 
+// ── Spot volume: read from Redis cache, fall back to live CoinGecko ──
 async function getSpotVolume() {
+  try {
+    const cached = await redis.get('coingecko:data');
+    if (cached) {
+      const raw: any = typeof cached === 'string' ? JSON.parse(cached) : cached;
+      if (raw?.volumeCharts && Object.keys(raw.volumeCharts).length > 0) {
+        return raw.volumeCharts as Record<string, { t: number; v: number }[]>;
+      }
+    }
+  } catch {}
+
+  // Fallback: live CoinGecko API
   try {
     const results = await Promise.all(
       COINS.map(coin => fetch(`https://api.coingecko.com/api/v3/coins/${coin}/market_chart?vs_currency=usd&days=365&interval=daily&x_cg_demo_api_key=${COINGECKO_KEY}`, { next: { revalidate: 3600 } }).then(r => r.json()))
@@ -442,8 +472,34 @@ async function getMacro() {
   };
 }
 
+// ── Realized vol closes: read from Redis cache, fall back to live CoinGecko ──
+// Exposed at top level so route-dailynote.ts can use cached closes directly.
+async function getRealizedVolCloses(): Promise<{ btcCloses: number[]; ethCloses: number[] }> {
+  try {
+    const cached = await redis.get('coingecko:data');
+    if (cached) {
+      const raw: any = typeof cached === 'string' ? JSON.parse(cached) : cached;
+      if (raw?.btcCloses?.length && raw?.ethCloses?.length) {
+        return { btcCloses: raw.btcCloses, ethCloses: raw.ethCloses };
+      }
+    }
+  } catch {}
+
+  // Fallback: live CoinGecko API
+  try {
+    const [btcChart, ethChart] = await Promise.all([
+      fetch(`https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=35&interval=daily&x_cg_demo_api_key=${COINGECKO_KEY}`, { next: { revalidate: 3600 } }).then(r => r.json()),
+      fetch(`https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=usd&days=35&interval=daily&x_cg_demo_api_key=${COINGECKO_KEY}`, { next: { revalidate: 3600 } }).then(r => r.json()),
+    ]);
+    return {
+      btcCloses: (btcChart?.prices || []).map((p: number[]) => p[1]).filter((v: number) => typeof v === 'number' && v > 0),
+      ethCloses: (ethChart?.prices || []).map((p: number[]) => p[1]).filter((v: number) => typeof v === 'number' && v > 0),
+    };
+  } catch { return { btcCloses: [], ethCloses: [] }; }
+}
+
 export async function GET() {
-  const [coinalyze, deribit, feargreed, etf, prices, spotvolume, macro] = await Promise.allSettled([
+  const [coinalyze, deribit, feargreed, etf, prices, spotvolume, macro, realizedVol] = await Promise.allSettled([
     getCoinalyze(),
     getDeribit(),
     getFearGreed(),
@@ -451,6 +507,7 @@ export async function GET() {
     getPrices(),
     getSpotVolume(),
     getMacro(),
+    getRealizedVolCloses(),
   ]);
 
   return NextResponse.json({
@@ -461,6 +518,7 @@ export async function GET() {
     prices:     prices.status     === 'fulfilled' ? prices.value     : null,
     spotvolume: spotvolume.status === 'fulfilled' ? spotvolume.value : null,
     macro:      macro.status      === 'fulfilled' ? macro.value      : null,
+    realizedVol: realizedVol.status === 'fulfilled' ? realizedVol.value : { btcCloses: [], ethCloses: [] },
     updatedAt: Date.now(),
   });
 }
