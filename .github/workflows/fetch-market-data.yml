@@ -17,6 +17,7 @@ jobs:
           UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
           APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
           COINGLASS_ACTOR_ID: oscillating_rings~my-actor-1
+          COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
         run: |
           node << 'EOF'
           const https = require('https');
@@ -25,6 +26,10 @@ jobs:
           const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
           const APIFY_TOKEN = process.env.APIFY_API_TOKEN;
           const COINGLASS_ACTOR_ID = process.env.COINGLASS_ACTOR_ID;
+          const COINGECKO_KEY = process.env.COINGECKO_API_KEY;
+
+          const COINS = ['bitcoin', 'ethereum', 'solana', 'ripple', 'hyperliquid'];
+          const SYMBOLS = ['BTC', 'ETH', 'SOL', 'XRP', 'HYPE'];
 
           function request(url, opts={}) {
             return new Promise((res) => {
@@ -71,19 +76,86 @@ jobs:
             console.log(`Redis ${key}:`, JSON.stringify(r));
           }
 
+          // ── CoinGecko: prices, global, spot volume, realized vol closes ──────
+          // Cached in Redis to avoid exhausting the 10k/month Demo plan credit limit.
+          // Each cron run costs ~15 CoinGecko credits (3 calls) vs ~35 per page load.
+          // At 4 runs/day x 30 days = 120 runs x 15 credits = 1,800 credits/month.
+          async function fetchCoinGeckoData() {
+            if (!COINGECKO_KEY) {
+              console.log('CoinGecko: missing API key, skipping');
+              return null;
+            }
+            try {
+              console.log('Fetching CoinGecko prices + global...');
+              const [markets, global] = await Promise.all([
+                request(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${COINS.join(',')}&price_change_percentage=24h,7d,30d&x_cg_demo_api_key=${COINGECKO_KEY}`),
+                request(`https://api.coingecko.com/api/v3/global?x_cg_demo_api_key=${COINGECKO_KEY}`),
+              ]);
+
+              const prices = {};
+              if (Array.isArray(markets)) {
+                markets.forEach(coin => {
+                  const idx = COINS.indexOf(coin.id);
+                  if (idx !== -1) prices[SYMBOLS[idx]] = {
+                    price: coin.current_price,
+                    change24h: coin.price_change_percentage_24h,
+                    change7d: coin.price_change_percentage_7d_in_currency ?? null,
+                    change30d: coin.price_change_percentage_30d_in_currency ?? null,
+                    marketCap: coin.market_cap,
+                    volume24h: coin.total_volume,
+                  };
+                });
+              }
+              const globalData = global?.data || {};
+
+              // Spot volume: 1Y daily charts for each coin (used for Spot Volume card)
+              console.log('Fetching CoinGecko spot volume charts...');
+              await sleep(2000); // avoid rate limit
+              const volumeCharts = {};
+              const totalByTime = {};
+              for (const [i, coin] of COINS.entries()) {
+                const res = await request(`https://api.coingecko.com/api/v3/coins/${coin}/market_chart?vs_currency=usd&days=365&interval=daily&x_cg_demo_api_key=${COINGECKO_KEY}`);
+                const volumes = res?.total_volumes || [];
+                volumeCharts[SYMBOLS[i]] = volumes.map(([ts, v]) => ({ t: Math.floor(ts/1000), v }));
+                volumeCharts[SYMBOLS[i]].forEach(({t, v}) => { totalByTime[t] = (totalByTime[t] || 0) + v; });
+                await sleep(1000);
+              }
+              volumeCharts['total'] = Object.entries(totalByTime).map(([t,v]) => ({t:+t,v})).sort((a,b)=>a.t-b.t);
+
+              // Realized vol closes: 35 days for BTC + ETH (used in Daily Note options table)
+              console.log('Fetching CoinGecko realized vol closes...');
+              await sleep(2000);
+              const [btcChart, ethChart] = await Promise.all([
+                request(`https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=35&interval=daily&x_cg_demo_api_key=${COINGECKO_KEY}`),
+                request(`https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=usd&days=35&interval=daily&x_cg_demo_api_key=${COINGECKO_KEY}`),
+              ]);
+              const btcCloses = (btcChart?.prices || []).map(p => p[1]).filter(v => typeof v === 'number' && v > 0);
+              const ethCloses = (ethChart?.prices || []).map(p => p[1]).filter(v => typeof v === 'number' && v > 0);
+
+              return {
+                prices,
+                globalMarketCap: globalData.total_market_cap?.usd || 0,
+                globalVolume24h: globalData.total_volume?.usd || 0,
+                btcDominance: globalData.market_cap_percentage?.btc || 0,
+                ethDominance: globalData.market_cap_percentage?.eth || 0,
+                volumeCharts,
+                btcCloses,
+                ethCloses,
+                updatedAt: Date.now(),
+              };
+            } catch(e) {
+              console.log('CoinGecko error:', e.message);
+              return null;
+            }
+          }
+
           // ── CoinGlass: all-market OI + liquidations + ETF data via Apify Playwright actor ──
-          // Actor scrapes: coinglass.com/liquidations (OI + liqs), /etf/hype, /etf/solana, /etf/xrp
-          // Uses async start + poll instead of run-sync: run-sync's single HTTP timeout
-          // was unreliable because Apify queue + container startup overhead stacked on top
-          // of the ~90s actor runtime, pushing past the timeout. Polling decouples us from
-          // any single timeout — we start the run, then poll status until it finishes.
           async function fetchCoinGlassData() {
             if (!APIFY_TOKEN || !COINGLASS_ACTOR_ID) {
               console.log('CoinGlass: missing Apify credentials, skipping');
               return { ok: false, reason: 'missing Apify credentials' };
             }
             try {
-              // Step 1: start the run asynchronously (memory 1024, actor-level timeout 300s)
               const startUrl = `https://api.apify.com/v2/acts/${COINGLASS_ACTOR_ID}/runs?token=${APIFY_TOKEN}&memory=2048&timeout=600`;
               const runResp = await request(startUrl, { method: 'POST' });
               const runId = runResp?.data?.id;
@@ -93,7 +165,6 @@ jobs:
               }
               console.log('CoinGlass actor started, runId:', runId);
 
-              // Step 2: poll status until finished (max ~900s: 90 polls x 10s)
               const statusUrl = `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`;
               let status = 'RUNNING';
               for (let i = 0; i < 90; i++) {
@@ -110,7 +181,6 @@ jobs:
                 return { ok: false, reason: `Actor did not finish in time (last status: ${status})` };
               }
 
-              // Step 3: fetch the OUTPUT record — get the KV store ID from the run, then fetch the record
               const runDetailUrl = `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`;
               const runDetail = await request(runDetailUrl);
               const kvStoreId = runDetail?.data?.defaultKeyValueStoreId;
@@ -248,7 +318,17 @@ jobs:
             } : cgResult));
             await writeRedis('coinglass:status', cgResult, 90000);
 
-            // ── Step 2: Coinalyze (chart time-series, per-asset breakdown) ───
+            // ── Step 2: CoinGecko (prices, global, spot volume, realized vol) ───
+            console.log('=== Fetching CoinGecko data ===');
+            const cgeckoResult = await fetchCoinGeckoData();
+            if (cgeckoResult) {
+              await writeRedis('coingecko:data', cgeckoResult, 86400);
+              console.log('CoinGecko: cached prices, volume, closes');
+            } else {
+              console.log('CoinGecko: fetch failed, keeping existing cache');
+            }
+
+            // ── Step 3: Coinalyze (chart time-series, per-asset breakdown) ───
             console.log('=== Fetching current snapshots ===');
             const oiCurrentRaw   = await fetchByAsset(s=>`/open-interest?symbols=${s}&convert_to_usd=true`);
             await sleep(4000);
@@ -304,22 +384,13 @@ jobs:
               ? ((totalChart24h[totalChart24h.length-1].v-totalChart24h[0].v)/totalChart24h[0].v)*100 : 0;
 
             console.log('Coinalyze totalOI:', totalOI);
-            console.log('Coinalyze totalLiqs24h:', totalLiqs24h);
             console.log('CoinGlass allMarketOI:', cgResult.ok ? cgResult.allMarketOI : 'unavailable');
-            console.log('CoinGlass totalLiqs24h:', cgResult.ok ? cgResult.liq?.total24h : 'unavailable');
-            console.log('CoinGlass HYPE ETF AUM:', cgResult.hypeEtf?.totalMarketCap ?? 'unavailable');
-            console.log('CoinGlass SOL ETF AUM:', cgResult.solEtf?.totalMarketCap ?? 'unavailable');
-            console.log('CoinGlass XRP ETF AUM:', cgResult.xrpEtf?.totalMarketCap ?? 'unavailable');
-            console.log('CoinGlass XRP ETF flow:', cgResult.xrpEtf?.todayFlowUsd ?? 'unavailable');
 
             const result = {
-              // Coinalyze chart data (time-series, per-asset breakdown)
               totalOI, oiChange24h, avgFunding, fundingByAsset,
               totalLiqs24h, totalLongLiqs24h, totalShortLiqs24h,
               oiCharts, liqCharts, fundCharts,
               totalVol24h: null,
-              // CoinGlass all-market headline numbers (true market-wide totals).
-              // cgStatusOk=false → all cg* fields are null, fall back to Coinalyze.
               cgStatusOk: cgResult.ok,
               cgStatusReason: cgResult.reason,
               cgAllMarketOI: cgResult.ok ? cgResult.allMarketOI : null,
@@ -328,12 +399,11 @@ jobs:
               cgShortLiqs24h: cgResult.ok ? cgResult.liq?.short24h : null,
               cgTradersLiquidated24h: cgResult.ok ? cgResult.liq?.tradersLiquidated24h : null,
               cgLargestLiquidation: cgResult.ok ? cgResult.liq?.largestLiquidation : null,
-              // CoinGlass ETF data (AUM ≈ market cap for spot ETFs; flows where Farside doesn't cover)
               cgHypeEtfMarketCap: cgResult.hypeEtf?.totalMarketCap ?? null,
               cgHypeEtfFlowUsd: cgResult.hypeEtf?.todayFlowUsd ?? null,
-              cgSolEtfMarketCap: cgResult.solEtf?.totalMarketCap ?? null,   // AUM only; flows from Farside
-              cgXrpEtfMarketCap: cgResult.xrpEtf?.totalMarketCap ?? null,   // AUM
-              cgXrpEtfFlowUsd: cgResult.xrpEtf?.todayFlowUsd ?? null,       // flow (Farside doesn't track XRP)
+              cgSolEtfMarketCap: cgResult.solEtf?.totalMarketCap ?? null,
+              cgXrpEtfMarketCap: cgResult.xrpEtf?.totalMarketCap ?? null,
+              cgXrpEtfFlowUsd: cgResult.xrpEtf?.todayFlowUsd ?? null,
               updatedAt: Date.now(),
             };
 
