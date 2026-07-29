@@ -115,10 +115,11 @@ jobs:
               const totalByTime = {};
               for (const [i, coin] of COINS.entries()) {
                 const res = await request(`https://api.coingecko.com/api/v3/coins/${coin}/market_chart?vs_currency=usd&days=365&interval=daily&x_cg_demo_api_key=${COINGECKO_KEY}`);
+                console.log(`CoinGecko volume ${coin}: keys=${JSON.stringify(res ? Object.keys(res) : null)}, rows=${res?.total_volumes?.length ?? 'null'}`);
                 const volumes = res?.total_volumes || [];
                 volumeCharts[SYMBOLS[i]] = volumes.map(([ts, v]) => ({ t: Math.floor(ts/1000), v }));
                 volumeCharts[SYMBOLS[i]].forEach(({t, v}) => { totalByTime[t] = (totalByTime[t] || 0) + v; });
-                await sleep(1000);
+                await sleep(1500);
               }
               volumeCharts['total'] = Object.entries(totalByTime).map(([t,v]) => ({t:+t,v})).sort((a,b)=>a.t-b.t);
 
