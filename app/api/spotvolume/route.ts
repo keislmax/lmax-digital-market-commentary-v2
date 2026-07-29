@@ -1,10 +1,28 @@
 import { NextResponse } from 'next/server';
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
 
 const COINGECKO_KEY = process.env.COINGECKO_API_KEY;
 const COINS = ['bitcoin', 'ethereum', 'solana', 'ripple'];
 const SYMBOLS = ['BTC', 'ETH', 'SOL', 'XRP'];
 
 export async function GET() {
+  // Try Redis cache first (written by cron, costs 0 CoinGecko credits)
+  try {
+    const cached = await redis.get('coingecko:data');
+    if (cached) {
+      const raw: any = typeof cached === 'string' ? JSON.parse(cached) : cached;
+      if (raw?.volumeCharts && Object.keys(raw.volumeCharts).length > 0) {
+        return NextResponse.json(raw.volumeCharts);
+      }
+    }
+  } catch {}
+
+  // Fallback: live CoinGecko API
   try {
     const results = await Promise.all(
       COINS.map(coin =>
