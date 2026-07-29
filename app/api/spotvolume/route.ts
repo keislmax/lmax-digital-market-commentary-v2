@@ -10,14 +10,17 @@ const COINGECKO_KEY = process.env.COINGECKO_API_KEY;
 const COINS = ['bitcoin', 'ethereum', 'solana', 'ripple'];
 const SYMBOLS = ['BTC', 'ETH', 'SOL', 'XRP'];
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
-  // Try Redis cache first (written by cron, costs 0 CoinGecko credits)
+  // Try Redis cache first — check arrays are non-empty
   try {
     const cached = await redis.get('coingecko:data');
     if (cached) {
       const raw: any = typeof cached === 'string' ? JSON.parse(cached) : cached;
-      if (raw?.volumeCharts && Object.keys(raw.volumeCharts).length > 0) {
-        return NextResponse.json(raw.volumeCharts);
+      const charts = raw?.volumeCharts;
+      if (charts && charts.BTC?.length > 0) {
+        return NextResponse.json(charts);
       }
     }
   } catch {}
@@ -28,7 +31,7 @@ export async function GET() {
       COINS.map(coin =>
         fetch(
           `https://api.coingecko.com/api/v3/coins/${coin}/market_chart?vs_currency=usd&days=365&interval=daily&x_cg_demo_api_key=${COINGECKO_KEY}`,
-          { next: { revalidate: 3600 } }
+          { cache: 'no-store' }
         ).then(r => r.json())
       )
     );
