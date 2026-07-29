@@ -801,7 +801,14 @@ export default function Dashboard() {
   const macro = data?.macro;
   const pricesData = data?.prices;
   const prices = pricesData?.prices;
-  const spotVolumeCharts = buildSpotVolumeCharts(data?.spotvolume);
+  const [spotVolumeRaw, setSpotVolumeRaw] = useState<any>(null);
+useEffect(() => {
+  fetch('/api/spotvolume', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(setSpotVolumeRaw)
+    .catch(() => {});
+}, []);
+const spotVolumeCharts = buildSpotVolumeCharts(spotVolumeRaw);
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
