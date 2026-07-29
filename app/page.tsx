@@ -761,6 +761,7 @@ function buildSpotVolumeCharts(rawData: any): Record<string, Record<string, any[
       '1y':  all,
     };
   }
+  result['ALL'] = result['total'] || { '7d': [], '30d': [], '90d': [], '1y': [] };
   return result;
 }
 
