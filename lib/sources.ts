@@ -194,3 +194,28 @@ export async function getEtfAum(): Promise<{
   const [btc, eth, sol, xrp] = await Promise.all([sosoAum('BTC'), sosoAum('ETH'), sosoAum('SOL'), sosoAum('XRP')]);
   return { btc, eth, sol, xrp };
 }
+// Add this function to lib/sources.ts at the bottom of the file
+
+export async function getBitmineHoldings() {
+  const COINGECKO_KEY = process.env.COINGECKO_API_KEY;
+  try {
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/companies/public_treasury/ethereum?x_cg_demo_api_key=${COINGECKO_KEY}`,
+      { next: { revalidate: 3600 } }
+    );
+    if (!res.ok) throw new Error(`CoinGecko ETH treasury fetch failed: ${res.status}`);
+    const json = await res.json();
+    const companies: any[] = json.companies || [];
+    const bitmine = companies.find(
+      c => c.symbol?.toUpperCase() === 'BMNR' ||
+           c.name?.toLowerCase().includes('bitmine')
+    );
+    if (!bitmine) return null;
+    return {
+      holdings: bitmine.total_holdings,
+      valueUsd: bitmine.total_current_value_usd,
+      avgPrice: bitmine.average_buy_price ?? null,
+      percentSupply: bitmine.percentage_of_total_supply ?? null,
+    };
+  } catch { return null; }
+}
