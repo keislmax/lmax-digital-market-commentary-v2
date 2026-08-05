@@ -5,6 +5,7 @@ import {
   getRwaTvl,
   getStrategyHoldings,
   getOptionsOi,
+  getBitmineHoldings,
 } from '@/lib/sources';
 
 export const dynamic = 'force-dynamic';
@@ -102,13 +103,8 @@ async function getCoinalyze() {
   } catch { return null; }
 }
 
-// ── CoinGecko: read from Redis cache (written by cron), fall back to live API ──
-// Cache key: coingecko:data — written every cron run (~4x/day).
-// Fallback keeps the dashboard working if cache is cold (first deploy, cache expired).
-// Fallback costs CoinGecko credits; cache costs zero.
 async function getPrices() {
   try {
-    // Try Redis cache first
     const cached = await redis.get('coingecko:data');
     if (cached) {
       const raw: any = typeof cached === 'string' ? JSON.parse(cached) : cached;
@@ -124,8 +120,6 @@ async function getPrices() {
       }
     }
   } catch {}
-
-  // Fallback: live CoinGecko API (costs credits)
   try {
     const [markets, global] = await Promise.all([
       fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${COINS.join(',')}&price_change_percentage=24h,7d,30d&x_cg_demo_api_key=${COINGECKO_KEY}`, { next: { revalidate: 60 } }).then(r => r.json()),
@@ -230,7 +224,6 @@ async function calcVolTermStructure(currency: string): Promise<{ d7: number | nu
     const idx = await fetchDeribit('get_index_price', { index_name: `${currency.toLowerCase()}_usd` });
     const spot: number = idx?.index_price ?? 0;
     if (!spot) return { d7: null, d30: null, d90: null, shape: 'unavailable' };
-
     const summaryIv: Record<string, number> = {};
     if (Array.isArray(summary)) {
       summary.forEach((s: any) => {
@@ -239,7 +232,6 @@ async function calcVolTermStructure(currency: string): Promise<{ d7: number | nu
         }
       });
     }
-
     const results: Record<string, number | null> = {};
     for (const target of targets) {
       try {
@@ -248,11 +240,9 @@ async function calcVolTermStructure(currency: string): Promise<{ d7: number | nu
         withDiff.sort((a, b) => a.diff - b.diff);
         const nearestExpiry = withDiff[0]?.expiration_timestamp;
         if (!nearestExpiry) { results[target.label] = null; continue; }
-
         const atExpiry = instruments.filter(i => i.expiration_timestamp === nearestExpiry && i.option_type === 'call');
         atExpiry.sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot));
         const candidates = atExpiry.slice(0, 5);
-
         let iv: number | null = null;
         for (const c of candidates) {
           const siv = summaryIv[c.instrument_name];
@@ -290,8 +280,7 @@ async function calcPutCallRatio(currency: string): Promise<{ ratio: number | nul
     if (!Array.isArray(summary)) return { ratio: null, putOI: null, callOI: null };
     const typeMap: Record<string, string> = {};
     instruments.forEach(i => { typeMap[i.instrument_name] = i.option_type; });
-    let putOI = 0;
-    let callOI = 0;
+    let putOI = 0, callOI = 0;
     summary.forEach((s: any) => {
       const oi = s.open_interest ?? 0;
       const type = typeMap[s.instrument_name];
@@ -306,43 +295,34 @@ async function calcPutCallRatio(currency: string): Promise<{ ratio: number | nul
 async function getDeribit() {
   const now = Date.now();
   const tfs = ['24h', '7d', '30d', '90d', '1y'];
-  const msArr = [86400000, 7 * 86400000, 30 * 86400000, 90 * 86400000, 365 * 86400000];
+  const msArr = [86400000, 7*86400000, 30*86400000, 90*86400000, 365*86400000];
   const resArr = [3600, 3600, 86400, 86400, 86400];
-
   const fetchVolCharts = async (currency: string) => {
     const out: Record<string, { t: number; v: number }[]> = {};
     const results = await Promise.allSettled(
-      tfs.map((tf, i) =>
-        fetchDeribit('get_volatility_index_data', {
-          currency,
-          start_timestamp: String(now - msArr[i]),
-          end_timestamp: String(now),
-          resolution: String(resArr[i]),
-        })
-      )
+      tfs.map((tf, i) => fetchDeribit('get_volatility_index_data', {
+        currency,
+        start_timestamp: String(now - msArr[i]),
+        end_timestamp: String(now),
+        resolution: String(resArr[i]),
+      }))
     );
     results.forEach((r, i) => {
-      out[tfs[i]] =
-        r.status === 'fulfilled'
-          ? ((r.value?.data || []) as number[][]).map((p) => ({ t: Math.floor(p[0] / 1000), v: p[4] }))
-          : [];
+      out[tfs[i]] = r.status === 'fulfilled'
+        ? ((r.value?.data || []) as number[][]).map(p => ({ t: Math.floor(p[0]/1000), v: p[4] }))
+        : [];
     });
     return out;
   };
-
   const [btcChartsR, ethChartsR, btcSkewR, ethSkewR, btcBasisR, ethBasisR, btcPutCallR, termStructureR, optionsOiR] =
     await Promise.allSettled([
-      fetchVolCharts('BTC'),
-      fetchVolCharts('ETH'),
-      calcSkew('BTC'),
-      calcSkew('ETH'),
-      calcBasis('BTC'),
-      calcBasis('ETH'),
+      fetchVolCharts('BTC'), fetchVolCharts('ETH'),
+      calcSkew('BTC'), calcSkew('ETH'),
+      calcBasis('BTC'), calcBasis('ETH'),
       calcPutCallRatio('BTC'),
       calcVolTermStructure('BTC'),
       getOptionsOi(),
     ]);
-
   const btcChartsByTf = btcChartsR.status === 'fulfilled' ? btcChartsR.value : {};
   const ethChartsByTf = ethChartsR.status === 'fulfilled' ? ethChartsR.value : {};
   const btcSkew = btcSkewR.status === 'fulfilled' ? btcSkewR.value : null;
@@ -352,12 +332,10 @@ async function getDeribit() {
   const btcPutCall = btcPutCallR.status === 'fulfilled' ? btcPutCallR.value : { ratio: null, putOI: null, callOI: null };
   const termStructure = termStructureR.status === 'fulfilled' ? termStructureR.value : { d7: null, d30: null, d90: null, shape: 'unavailable' };
   const optionsOi = optionsOiR.status === 'fulfilled' ? optionsOiR.value : { btcUsd: null, ethUsd: null };
-
   const btc24h = btcChartsByTf['24h'] || [];
-  const btcCurrent = btc24h.length ? btc24h[btc24h.length - 1].v : null;
+  const btcCurrent = btc24h.length ? btc24h[btc24h.length-1].v : null;
   const interpSkew = (s: number | null) =>
     s === null ? 'unavailable' : s > 3 ? 'bearish (puts bid up)' : s < -3 ? 'bullish (calls bid up)' : 'neutral';
-
   return {
     dvol: { current: btcCurrent, chartsByAsset: { BTC: btcChartsByTf, ETH: ethChartsByTf } },
     skew: {
@@ -366,11 +344,7 @@ async function getDeribit() {
       BTC: { value25d: btcSkew, interpretation: interpSkew(btcSkew) },
       ETH: { value25d: ethSkew === 0 ? null : ethSkew, interpretation: interpSkew(ethSkew === 0 ? null : ethSkew) },
     },
-    basis: btcBasis,
-    ethBasis,
-    putCallRatio: btcPutCall,
-    termStructure,
-    optionsOi,
+    basis: btcBasis, ethBasis, putCallRatio: btcPutCall, termStructure, optionsOi,
     skewDebug: { btc: btcSkew, eth: ethSkew },
     updatedAt: Date.now(),
   };
@@ -381,23 +355,16 @@ async function getFearGreed() {
   try {
     const res = await fetch(
       'https://pro-api.coinmarketcap.com/v3/fear-and-greed/historical?limit=30',
-      {
-        headers: { 'X-CMC_PRO_API_KEY': CMC_KEY || '', 'Accept': 'application/json' },
-        next: { revalidate: 3600 },
-      }
+      { headers: { 'X-CMC_PRO_API_KEY': CMC_KEY || '', 'Accept': 'application/json' }, next: { revalidate: 3600 } }
     );
     if (!res.ok) throw new Error(`CMC Fear & Greed fetch failed: ${res.status}`);
     const json = await res.json();
     const data: Array<{ value: number; value_classification: string; timestamp: string }> = json.data || [];
     if (!data.length) throw new Error('No CMC Fear & Greed data');
-    const current   = data[0];
-    const yesterday = data[1];
-    const weekAgo   = data[7];
-    const monthAgo  = data[29];
+    const current = data[0], yesterday = data[1], weekAgo = data[7], monthAgo = data[29];
     const chart = data.slice(0, 30).reverse().map(d => ({
       t: Math.floor(new Date(d.timestamp).getTime() / 1000),
-      v: Number(d.value),
-      label: d.value_classification,
+      v: Number(d.value), label: d.value_classification,
     }));
     return {
       current: { value: Number(current.value), label: current.value_classification },
@@ -406,14 +373,9 @@ async function getFearGreed() {
         weekAgo:   weekAgo   ? Number(current.value) - Number(weekAgo.value)   : null,
         monthAgo:  monthAgo  ? Number(current.value) - Number(monthAgo.value)  : null,
       },
-      chart,
-      source: 'CoinMarketCap',
-      updatedAt: Date.now(),
+      chart, source: 'CoinMarketCap', updatedAt: Date.now(),
     };
-  } catch (e) {
-    console.error('CMC Fear & Greed failed:', e);
-    return null;
-  }
+  } catch { return null; }
 }
 
 async function getETF() {
@@ -429,19 +391,16 @@ async function getETF() {
   } catch { return null; }
 }
 
-// ── Spot volume: read from Redis cache, fall back to live CoinGecko ──
 async function getSpotVolume() {
   try {
     const cached = await redis.get('coingecko:data');
     if (cached) {
       const raw: any = typeof cached === 'string' ? JSON.parse(cached) : cached;
-      if (raw?.volumeCharts && Object.keys(raw.volumeCharts).length > 0) {
+      if (raw?.volumeCharts && raw.volumeCharts.BTC?.length > 0) {
         return raw.volumeCharts as Record<string, { t: number; v: number }[]>;
       }
     }
   } catch {}
-
-  // Fallback: live CoinGecko API
   try {
     const results = await Promise.all(
       COINS.map(coin => fetch(`https://api.coingecko.com/api/v3/coins/${coin}/market_chart?vs_currency=usd&days=365&interval=daily&x_cg_demo_api_key=${COINGECKO_KEY}`, { next: { revalidate: 3600 } }).then(r => r.json()))
@@ -450,7 +409,7 @@ async function getSpotVolume() {
     const totalByTime: Record<number, number> = {};
     SYMBOLS.forEach((sym, i) => {
       const volumes: [number, number][] = results[i]?.total_volumes || [];
-      data[sym] = volumes.map(([ts, v]) => ({ t: Math.floor(ts / 1000), v }));
+      data[sym] = volumes.map(([ts, v]) => ({ t: Math.floor(ts/1000), v }));
       data[sym].forEach(({ t, v }) => { totalByTime[t] = (totalByTime[t] || 0) + v; });
     });
     data['total'] = Object.entries(totalByTime).map(([t, v]) => ({ t: +t, v })).sort((a, b) => a.t - b.t);
@@ -459,21 +418,21 @@ async function getSpotVolume() {
 }
 
 async function getMacro() {
-  const [stablecoins, rwa, strategy] = await Promise.allSettled([
+  const [stablecoins, rwa, strategy, bitmine] = await Promise.allSettled([
     getStablecoins(),
     getRwaTvl(),
     getStrategyHoldings(),
+    getBitmineHoldings(),
   ]);
   return {
     stablecoins: stablecoins.status === 'fulfilled' ? stablecoins.value : null,
     rwa: rwa.status === 'fulfilled' ? rwa.value : null,
     strategy: strategy.status === 'fulfilled' ? strategy.value : null,
+    bitmine: bitmine.status === 'fulfilled' ? bitmine.value : null,
     updatedAt: Date.now(),
   };
 }
 
-// ── Realized vol closes: read from Redis cache, fall back to live CoinGecko ──
-// Exposed at top level so route-dailynote.ts can use cached closes directly.
 async function getRealizedVolCloses(): Promise<{ btcCloses: number[]; ethCloses: number[] }> {
   try {
     const cached = await redis.get('coingecko:data');
@@ -484,8 +443,6 @@ async function getRealizedVolCloses(): Promise<{ btcCloses: number[]; ethCloses:
       }
     }
   } catch {}
-
-  // Fallback: live CoinGecko API
   try {
     const [btcChart, ethChart] = await Promise.all([
       fetch(`https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=35&interval=daily&x_cg_demo_api_key=${COINGECKO_KEY}`, { next: { revalidate: 3600 } }).then(r => r.json()),
@@ -509,15 +466,14 @@ export async function GET() {
     getMacro(),
     getRealizedVolCloses(),
   ]);
-
   return NextResponse.json({
-    coinalyze:  coinalyze.status  === 'fulfilled' ? coinalyze.value  : null,
-    deribit:    deribit.status    === 'fulfilled' ? deribit.value    : null,
-    feargreed:  feargreed.status  === 'fulfilled' ? feargreed.value  : null,
-    etf:        etf.status        === 'fulfilled' ? etf.value        : null,
-    prices:     prices.status     === 'fulfilled' ? prices.value     : null,
-    spotvolume: spotvolume.status === 'fulfilled' ? spotvolume.value : null,
-    macro:      macro.status      === 'fulfilled' ? macro.value      : null,
+    coinalyze:   coinalyze.status   === 'fulfilled' ? coinalyze.value   : null,
+    deribit:     deribit.status     === 'fulfilled' ? deribit.value     : null,
+    feargreed:   feargreed.status   === 'fulfilled' ? feargreed.value   : null,
+    etf:         etf.status         === 'fulfilled' ? etf.value         : null,
+    prices:      prices.status      === 'fulfilled' ? prices.value      : null,
+    spotvolume:  spotvolume.status  === 'fulfilled' ? spotvolume.value  : null,
+    macro:       macro.status       === 'fulfilled' ? macro.value       : null,
     realizedVol: realizedVol.status === 'fulfilled' ? realizedVol.value : { btcCloses: [], ethCloses: [] },
     updatedAt: Date.now(),
   });
