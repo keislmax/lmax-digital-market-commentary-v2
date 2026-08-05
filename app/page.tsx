@@ -621,9 +621,20 @@ function MacroCard({ macro, c, etfFarside, loading }: { macro: any; c: any; etfF
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total ETF AUM (HYPE)</span>
           <span style={{ fontSize: 13, fontWeight: 600 }}>{c?.hypeEtf?.totalMarketCap != null ? fmtUSD(c.hypeEtf.totalMarketCap) : 'Data Not Published'}</span>
         </div>
+        <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' as const, color: 'var(--text-muted)', marginBottom: 5 }}>BitMine (BMNR)</div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Value of Holdings</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{macro?.bitmine?.valueUsd != null ? fmtUSD(macro.bitmine.valueUsd) : 'Data Not Published'}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>ETH Holdings{macro?.bitmine?.avgPrice ? ` (avg price $${Math.round(macro.bitmine.avgPrice).toLocaleString('en-US')})` : ''}</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{macro?.bitmine?.holdings != null ? macro.bitmine.holdings.toLocaleString('en-US') + ' ETH' : 'Data Not Published'}</span>
+        </div>
       </div>
       <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 8 }}>
-        RWA TVL: sum across DefiLlama&apos;s RWA category, computed aggregate. Strategy holdings: CoinGecko treasury data. ETF AUM: BTC/ETH/SOL/HYPE cumulative net flow from Farside Investors; XRP from CoinGlass.
+        RWA TVL: sum across DefiLlama&apos;s RWA category, computed aggregate. Strategy + BitMine holdings: CoinGecko treasury data. ETF AUM: BTC/ETH/SOL/HYPE cumulative net flow from Farside Investors; XRP from CoinGlass.
       </div>
     </div>
   );
