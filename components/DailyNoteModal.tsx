@@ -291,7 +291,7 @@ function buildHTML(note: DailyNoteData): string {
       <td style="padding:4px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmtUSD(etf.bitmineValueUsd)}</td>
     </tr>
     <tr>
-      <td style="padding:4px 10px;font-size:12px;color:#6b7280">ETH Holdings${etf.bitmineAvgPrice != null ? \` (avg price $$\${Math.round(etf.bitmineAvgPrice).toLocaleString('en-US')})\` : ''}</td>
+      <td style="padding:4px 10px;font-size:12px;color:#6b7280">ETH Holdings${etf.bitmineAvgPrice != null ? ' (avg price $' + Math.round(etf.bitmineAvgPrice).toLocaleString('en-US') + ')' : ''}</td>
       <td style="padding:4px 10px;font-size:12px;text-align:right;font-weight:600">${etf.bitmineHoldings != null ? etf.bitmineHoldings.toLocaleString('en-US') + ' ETH' : '—'}</td>
     </tr>
   </table>
