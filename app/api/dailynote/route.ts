@@ -8,7 +8,7 @@ function realizedVol(closes: number[], windowDays: number): number | null {
   const slice = closes.slice(-(windowDays + 1));
   const returns: number[] = [];
   for (let i = 1; i < slice.length; i++) {
-    if (slice[i - 1] > 0 && slice[i] > 0) returns.push(Math.log(slice[i] / slice[i - 1]));
+    if (slice[i-1] > 0 && slice[i] > 0) returns.push(Math.log(slice[i] / slice[i-1]));
   }
   if (returns.length < 2) return null;
   const mean = returns.reduce((s, v) => s + v, 0) / returns.length;
@@ -43,9 +43,7 @@ export async function POST(req: Request) {
     const prices = priceMap?.prices || {};
     const ASSETS = ['BTC', 'ETH', 'SOL', 'XRP', 'HYPE'] as const;
 
-    // ---- Realized vol ----
-    // Use cached closes from Redis (written by cron, costs 0 CoinGecko credits).
-    // Falls back to empty array if cache is cold — vol columns show — in that case.
+    // ---- Realized vol from Redis cache ----
     const btcCloses: number[] = rvCache?.btcCloses || [];
     const ethCloses: number[] = rvCache?.ethCloses || [];
     const btcRv7  = realizedVol(btcCloses, 7);
@@ -53,20 +51,13 @@ export async function POST(req: Request) {
     const ethRv7  = realizedVol(ethCloses, 7);
     const ethRv30 = realizedVol(ethCloses, 30);
 
-    // ATM implied vol from Deribit (BTC only)
     const btcIv7  = db?.termStructure?.d7  ?? null;
     const btcIv30 = db?.termStructure?.d30 ?? null;
 
     // ---- Spot performance ----
     const spotRows = ASSETS.map(a => {
       const p = prices[a];
-      return {
-        asset: a,
-        price: p?.price ?? null,
-        change1d: p?.change24h ?? null,
-        change1w: p?.change7d ?? null,
-        change1m: p?.change30d ?? null,
-      };
+      return { asset: a, price: p?.price ?? null, change1d: p?.change24h ?? null, change1w: p?.change7d ?? null, change1m: p?.change30d ?? null };
     });
     const stablecoins = macro?.stablecoins?.latest ?? null;
     const rwa = macro?.rwa?.latest ?? null;
@@ -114,6 +105,11 @@ export async function POST(req: Request) {
     const strategyAvgPrice = macro?.strategy?.avgPrice ?? null;
     const strategyValue    = macro?.strategy?.valueUsd ?? null;
 
+    // ---- BitMine ----
+    const bitmineHoldings = macro?.bitmine?.holdings ?? null;
+    const bitmineAvgPrice = macro?.bitmine?.avgPrice ?? null;
+    const bitmineValueUsd = macro?.bitmine?.valueUsd ?? null;
+
     const dateStr = new Date().toLocaleDateString('en-SG', {
       timeZone: 'Asia/Singapore',
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
@@ -124,7 +120,7 @@ export async function POST(req: Request) {
       spot: { rows: spotRows, stablecoins, rwa, btcDominance: btcDom, fearGreed: fgValue, fearGreedLabel: fgLabel },
       funding: { rows: fundingRows, cgStatusOk, cgTotalLiqs, cgLongsLiqs, cgShortsLiqs, cgTraders, cgLargest },
       options: { btcRv7, btcRv30, ethRv7, ethRv30, btcIv7, btcIv30, optOiBtc, optOiEth, dvol, skew25d },
-      etf: { rows: etfRows, strategyValue, strategyHoldings, strategyAvgPrice },
+      etf: { rows: etfRows, strategyValue, strategyHoldings, strategyAvgPrice, bitmineValueUsd, bitmineHoldings, bitmineAvgPrice },
     });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
