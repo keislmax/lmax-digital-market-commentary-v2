@@ -53,27 +53,47 @@ jobs:
           function nowSec() { return Math.floor(Date.now()/1000); }
           function ago(s) { return nowSec() - s; }
 
-          async function fetchCoinalyze(path, retries=3) {
+                   async function fetchCoinalyze(path, retries=3) {
             for (let i = 0; i < retries; i++) {
-              const data = await request(`https://api.coinalyze.net/v1${path}`, {
-                headers: { 'api_key': COINALYZE_KEY }
+              // Dedicated request so we can read the Retry-After header on 429s.
+              const result = await new Promise((res) => {
+                const u = new URL(`https://api.coinalyze.net/v1${path}`);
+                const req = https.request({
+                  hostname: u.hostname, path: u.pathname + u.search, method: 'GET',
+                  headers: { 'Content-Type': 'application/json', 'api_key': COINALYZE_KEY },
+                }, r => {
+                  let data = '';
+                  r.on('data', c => data += c);
+                  r.on('end', () => {
+                    let parsed = null;
+                    try { parsed = JSON.parse(data); } catch {}
+                    res({ status: r.statusCode, retryAfter: r.headers['retry-after'], data: parsed });
+                  });
+                });
+                req.on('error', () => res({ status: 0, retryAfter: null, data: null }));
+                req.end();
               });
-              if (data && !data.message) return data;
-              const wait = data?.message ? 62 : 10;
-              console.log(`Retry ${i+1}: ${path.split('?')[0]} (${wait}s)`);
+
+              // Success: 2xx with a valid payload and no error message.
+              if (result.status >= 200 && result.status < 300 && result.data && !result.data.message) {
+                return result.data;
+              }
+
+              // On a 429, honour Retry-After (seconds); fall back to 62s if missing,
+              // or 10s for other transient errors.
+              let wait;
+              if (result.status === 429) {
+                const hdr = parseInt(result.retryAfter, 10);
+                wait = Number.isFinite(hdr) && hdr > 0 ? hdr + 1 : 62;
+              } else if (result.data?.message) {
+                wait = 62;
+              } else {
+                wait = 10;
+              }
+              console.log(`Retry ${i+1}: ${path.split('?')[0]} (status ${result.status}, ${wait}s)`);
               await sleep(wait * 1000);
             }
             return null;
-          }
-
-          async function writeRedis(key, value, ttl=86400) {
-            const body = JSON.stringify([['SET', key, JSON.stringify(value), 'EX', String(ttl)]]);
-            const r = await request(`${REDIS_URL}/pipeline`, {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
-              body
-            });
-            console.log(`Redis ${key}:`, JSON.stringify(r));
           }
 
           // ── CoinGecko: prices, global, spot volume, realized vol closes ──────
