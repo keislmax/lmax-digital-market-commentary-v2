@@ -96,6 +96,16 @@ jobs:
             return null;
           }
 
+          async function writeRedis(key, value, ttl=86400) {
+            const body = JSON.stringify([['SET', key, JSON.stringify(value), 'EX', String(ttl)]]);
+            const r = await request(`${REDIS_URL}/pipeline`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
+              body
+            });
+            console.log(`Redis ${key}:`, JSON.stringify(r));
+          }
+
           // ── CoinGecko: prices, global, spot volume, realized vol closes ──────
           // Cached in Redis to avoid exhausting the 10k/month Demo plan credit limit.
           // Each cron run costs ~15 CoinGecko credits (3 calls) vs ~35 per page load.
