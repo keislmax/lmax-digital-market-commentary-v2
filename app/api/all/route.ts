@@ -378,17 +378,82 @@ async function getFearGreed() {
   } catch { return null; }
 }
 
-async function getETF() {
+// ─── Farside ETF flows ────────────────────────────────────────────────────────
+// Previously this ran the Farside Apify actor synchronously (run-sync, up to 60s)
+// on EVERY page load, which pushed /api/all past Vercel's limit → HTTP 504.
+// Now: read the OUTPUT of the actor's last successful run (~1s), and if that run
+// is older than ETF_STALE_MS, kick off a fresh run in the background (no waiting).
+// The next page load after that run finishes picks up the new data.
+const ETF_CACHE_KEY = 'farside:data';
+const ETF_TRIGGER_LOCK = 'farside:trigger-lock';
+const ETF_STALE_MS = 3 * 60 * 60 * 1000; // refresh Farside at most every 3h (it only updates daily)
+
+async function fetchJsonWithTimeout(url: string, ms: number, init: RequestInit = {}): Promise<any> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
   try {
-    if (!ACTOR_ID || !APIFY_TOKEN) return null;
-    const runUrl = `https://api.apify.com/v2/acts/${ACTOR_ID}/run-sync?token=${APIFY_TOKEN}&outputRecordKey=OUTPUT&timeout=60`;
-    const res = await fetch(runUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}), cache: 'no-store' });
+    const res = await fetch(url, { ...init, signal: ctrl.signal, cache: 'no-store' });
     if (!res.ok) return null;
-    const data = await res.json();
-    if (!data || !data.btc) return null;
-    const empty = (asset: string) => ({ asset, error: 'No data', lastTradingDay: getLastTradingDay() });
-    return { btc: data.btc || empty('BTC'), eth: data.eth || empty('ETH'), sol: data.sol || empty('SOL'), hype: data.hype || empty('HYPE'), lastTradingDay: getLastTradingDay(), updatedAt: data.updatedAt || Date.now() };
-  } catch { return null; }
+    return await res.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function shapeEtf(data: any) {
+  if (!data || !data.btc) return null;
+  const empty = (asset: string) => ({ asset, error: 'No data', lastTradingDay: getLastTradingDay() });
+  return {
+    btc: data.btc || empty('BTC'),
+    eth: data.eth || empty('ETH'),
+    sol: data.sol || empty('SOL'),
+    hype: data.hype || empty('HYPE'),
+    lastTradingDay: getLastTradingDay(),
+    updatedAt: data.updatedAt || Date.now(),
+  };
+}
+
+async function getETF() {
+  if (!ACTOR_ID || !APIFY_TOKEN) return null;
+  const base = `https://api.apify.com/v2/acts/${ACTOR_ID}`;
+
+  // 1. Read last successful run's metadata + OUTPUT in parallel (fast, no new run)
+  const [lastRun, output] = await Promise.all([
+    fetchJsonWithTimeout(`${base}/runs/last?status=SUCCEEDED&token=${APIFY_TOKEN}`, 8000),
+    fetchJsonWithTimeout(`${base}/runs/last/key-value-store/records/OUTPUT?status=SUCCEEDED&token=${APIFY_TOKEN}`, 8000),
+  ]);
+
+  // 2. If the last good run is stale, start a new one in the background.
+  //    Redis lock ensures only one trigger per hour, however many people load the page.
+  const finishedAt = lastRun?.data?.finishedAt ? Date.parse(lastRun.data.finishedAt) : 0;
+  if (Date.now() - finishedAt > ETF_STALE_MS) {
+    try {
+      const gotLock = await redis.set(ETF_TRIGGER_LOCK, '1', { nx: true, ex: 3600 });
+      if (gotLock) {
+        await fetchJsonWithTimeout(`${base}/runs?token=${APIFY_TOKEN}`, 5000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+      }
+    } catch {}
+  }
+
+  // 3. Use fresh output if we got it, and keep a copy in Redis as a safety net
+  const shaped = shapeEtf(output);
+  if (shaped) {
+    try { await redis.set(ETF_CACHE_KEY, JSON.stringify(shaped), { ex: 7 * 86400 }); } catch {}
+    return shaped;
+  }
+
+  // 4. Apify unreachable → fall back to the last good copy
+  try {
+    const cached = await redis.get(ETF_CACHE_KEY);
+    if (cached) return typeof cached === 'string' ? JSON.parse(cached) : cached;
+  } catch {}
+  return null;
 }
 
 async function getSpotVolume() {
@@ -455,26 +520,49 @@ async function getRealizedVolCloses(): Promise<{ btcCloses: number[]; ethCloses:
   } catch { return { btcCloses: [], ethCloses: [] }; }
 }
 
+// ─── Per-source time limit ────────────────────────────────────────────────────
+// One slow upstream (Deribit, CoinGecko, Apify…) must never take the whole
+// dashboard down. Each source gets its own deadline; if it misses it, that card
+// shows "—" and everything else still loads.
+function withTimeout<T>(p: Promise<T>, ms: number, label: string, timings: Record<string, number | string>): Promise<T | null> {
+  const start = Date.now();
+  return new Promise<T | null>(resolve => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      timings[label] = `timeout>${ms}ms`;
+      resolve(null);
+    }, ms);
+    p.then(
+      v => { if (done) return; done = true; clearTimeout(timer); timings[label] = Date.now() - start; resolve(v); },
+      () => { if (done) return; done = true; clearTimeout(timer); timings[label] = 'error'; resolve(null); },
+    );
+  });
+}
+
 export async function GET() {
-  const [coinalyze, deribit, feargreed, etf, prices, spotvolume, macro, realizedVol] = await Promise.allSettled([
-    getCoinalyze(),
-    getDeribit(),
-    getFearGreed(),
-    getETF(),
-    getPrices(),
-    getSpotVolume(),
-    getMacro(),
-    getRealizedVolCloses(),
+  const timings: Record<string, number | string> = {};
+  const [coinalyze, deribit, feargreed, etf, prices, spotvolume, macro, realizedVol] = await Promise.all([
+    withTimeout(getCoinalyze(),          10000, 'coinalyze',   timings),
+    withTimeout(getDeribit(),            20000, 'deribit',     timings),
+    withTimeout(getFearGreed(),           8000, 'feargreed',   timings),
+    withTimeout(getETF(),                15000, 'etf',         timings),
+    withTimeout(getPrices(),             12000, 'prices',      timings),
+    withTimeout(getSpotVolume(),         12000, 'spotvolume',  timings),
+    withTimeout(getMacro(),              15000, 'macro',       timings),
+    withTimeout(getRealizedVolCloses(),  12000, 'realizedVol', timings),
   ]);
   return NextResponse.json({
-    coinalyze:   coinalyze.status   === 'fulfilled' ? coinalyze.value   : null,
-    deribit:     deribit.status     === 'fulfilled' ? deribit.value     : null,
-    feargreed:   feargreed.status   === 'fulfilled' ? feargreed.value   : null,
-    etf:         etf.status         === 'fulfilled' ? etf.value         : null,
-    prices:      prices.status      === 'fulfilled' ? prices.value      : null,
-    spotvolume:  spotvolume.status  === 'fulfilled' ? spotvolume.value  : null,
-    macro:       macro.status       === 'fulfilled' ? macro.value       : null,
-    realizedVol: realizedVol.status === 'fulfilled' ? realizedVol.value : { btcCloses: [], ethCloses: [] },
+    coinalyze,
+    deribit,
+    feargreed,
+    etf,
+    prices,
+    spotvolume,
+    macro,
+    realizedVol: realizedVol ?? { btcCloses: [], ethCloses: [] },
+    _timings: timings, // ms per source — open /api/all in a browser to see what's slow
     updatedAt: Date.now(),
   });
 }
